@@ -1,0 +1,1 @@
+src/pages/Vulnerabilities.tsx(207,8): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
