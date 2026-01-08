@@ -9,9 +9,11 @@ import RecentAlerts from '../components/Dashboard/RecentAlerts';
 import ActivityFeed from '../components/Dashboard/ActivityFeed';
 import { analyticsApi } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { useTheme } from '../contexts/ThemeContext';
 import type { LiveMetrics } from '../types';
 
 const Dashboard = () => {
+  const { t } = useTheme();
   const [liveMetrics, setLiveMetrics] = useState<LiveMetrics>({
     devicesOnline: 0,
     totalVulnerabilities: 0,
@@ -21,7 +23,6 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const { connected } = useWebSocket();
 
-  // Fetch dashboard data from API
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
@@ -43,7 +44,6 @@ const Dashboard = () => {
 
     fetchDashboard();
     
-    // Refresh every 30 seconds
     const interval = setInterval(fetchDashboard, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -52,21 +52,21 @@ const Dashboard = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-white font-mono flex items-center gap-3">
-            <Terminal className="w-8 h-8 text-cyan-400" />
-            SECURITY COMMAND CENTER
+          <h1 className="text-3xl font-bold text-primary font-mono flex items-center gap-3">
+            <Terminal className="w-8 h-8 accent-cyan" />
+            {t.dashboard.title}
           </h1>
-          <p className="text-gray-400 mt-1 font-mono text-sm">Real-time IoT device monitoring and threat analysis</p>
+          <p className="text-tertiary mt-1 font-mono text-sm">{t.dashboard.subtitle}</p>
         </div>
         <div className="flex items-center gap-4">
-          <div className={`flex items-center gap-2 text-sm font-mono ${connected ? 'text-green-400' : 'text-red-400'}`}>
+          <div className={`flex items-center gap-2 text-sm font-mono ${connected ? 'text-green-400' : 'accent-red'}`}>
             <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
-            {connected ? 'WEBSOCKET CONNECTED' : 'WEBSOCKET DISCONNECTED'}
+            {connected ? t.header.websocketConnected : t.header.websocketDisconnected}
           </div>
-          <div className="w-px h-6 bg-cyan-500/30"></div>
+          <div className="w-px h-6 border-primary"></div>
           <div className="flex items-center gap-2 text-green-400 font-mono text-sm">
             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-            API CONNECTED
+            {t.header.apiConnected}
           </div>
         </div>
       </div>
@@ -75,7 +75,7 @@ const Dashboard = () => {
         <div className="flex items-center justify-center py-20">
           <div className="text-center">
             <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-cyan-400 font-mono">Loading dashboard data...</p>
+            <p className="accent-cyan font-mono">{t.dashboard.loadingData}</p>
           </div>
         </div>
       ) : (
@@ -83,25 +83,25 @@ const Dashboard = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <StatsCard 
               icon={Wifi} 
-              label="Devices Online" 
+              label={t.dashboard.devicesOnline} 
               value={liveMetrics.devicesOnline} 
               color="from-cyan-600 to-blue-600"
             />
             <StatsCard 
               icon={AlertTriangle} 
-              label="Total Vulnerabilities" 
+              label={t.dashboard.totalVulnerabilities} 
               value={liveMetrics.totalVulnerabilities} 
               color="from-orange-600 to-red-600"
             />
             <StatsCard 
               icon={Shield} 
-              label="Critical Issues" 
+              label={t.dashboard.criticalIssues} 
               value={liveMetrics.criticalIssues} 
               color="from-red-600 to-pink-600"
             />
             <StatsCard 
               icon={Activity} 
-              label="Active Scans" 
+              label={t.dashboard.activeScans} 
               value={liveMetrics.scanningNow} 
               color="from-green-600 to-emerald-600"
             />

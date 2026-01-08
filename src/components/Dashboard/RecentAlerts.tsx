@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { vulnerabilitiesApi } from '../../services/api';
+import { useTheme } from '../../contexts/ThemeContext';
+import type { Vulnerability } from '../../types';
 
 const RecentAlerts = () => {
-  const [vulnerabilities, setVulnerabilities] = useState([]);
+  const { t } = useTheme();
+  const [vulnerabilities, setVulnerabilities] = useState<Vulnerability[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchVulnerabilities = async () => {
       try {
         const response = await vulnerabilitiesApi.getAll();
-        // Filter critical and high severity, take first 3
         const criticalAlerts = response.data
           .filter((v: any) => v.severity === 'critical' || v.severity === 'high')
           .slice(0, 3);
@@ -27,48 +29,50 @@ const RecentAlerts = () => {
 
   if (loading) {
     return (
-      <div className="bg-gray-900 border border-cyan-500/30 rounded-lg p-6">
-        <h3 className="text-lg font-bold text-white mb-4 font-mono flex items-center gap-2">
-          <AlertTriangle className="w-5 h-5 text-red-400" />
-          RECENT CRITICAL ALERTS
+      <div className="bg-primary border border-primary rounded-lg p-6">
+        <h3 className="text-lg font-bold text-primary mb-4 font-mono flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 accent-red" />
+          {t.dashboard.recentAlerts}
         </h3>
         <div className="flex items-center justify-center py-8">
-          <div className="text-cyan-400 font-mono">Loading...</div>
+          <div className="accent-cyan font-mono">{t.common.loading}</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-gray-900 border border-cyan-500/30 rounded-lg p-6">
-      <h3 className="text-lg font-bold text-white mb-4 font-mono flex items-center gap-2">
-        <AlertTriangle className="w-5 h-5 text-red-400" />
-        RECENT CRITICAL ALERTS
+    <div className="bg-primary border border-primary rounded-lg p-6">
+      <h3 className="text-lg font-bold text-primary mb-4 font-mono flex items-center gap-2">
+        <AlertTriangle className="w-5 h-5 accent-red" />
+        {t.dashboard.recentAlerts}
       </h3>
       <div className="space-y-3">
         {vulnerabilities.map((vuln: any) => (
           <div 
             key={vuln.id} 
-            className="bg-gray-800 border border-red-500/30 rounded p-4 hover:border-red-400 transition-all"
+            className="bg-secondary border border-red-500/30 rounded p-4 hover:border-red-400 transition-all"
           >
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <div className="flex items-center gap-3">
-                  <span className="text-red-400 font-mono text-xs font-bold">{vuln.id}</span>
+                  <span className="accent-red font-mono text-xs font-bold">{vuln.id}</span>
                   <span className={`px-2 py-1 rounded text-xs font-mono font-bold ${
-                    vuln.severity === 'critical' 
-                      ? 'bg-red-500/20 text-red-400' 
-                      : 'bg-orange-500/20 text-orange-400'
+                    vuln.severity === 'critical' ? 'bg-red-500/20 accent-red border border-red-500' :
+                    vuln.severity === 'high' ? 'bg-orange-500/20 accent-orange border border-orange-500' :
+                    vuln.severity === 'medium' ? 'bg-yellow-500/20 accent-yellow border border-yellow-500' :
+                    vuln.severity === 'low' ? 'bg-green-500/20 accent-green border border-green-500' :
+                    'bg-blue-500/20 text-blue-400 border border-blue-500'
                   }`}>
-                    {vuln.severity.toUpperCase()}
+                    {t.risk[vuln.severity as keyof typeof t.risk]}
                   </span>
-                  <span className="text-cyan-400 font-mono text-xs">CVSS: {vuln.cvss}</span>
+                  <span className="accent-cyan font-mono text-xs">{t.vulnerabilities.cvss}: {vuln.cvss}</span>
                 </div>
-                <p className="text-white font-medium mt-2">{vuln.title}</p>
-                <p className="text-gray-400 text-sm mt-1 font-mono">Device: {vuln.device}</p>
+                <p className="text-primary font-medium mt-2">{vuln.title}</p>
+                <p className="text-tertiary text-sm mt-1 font-mono">{t.vulnerabilities.device}: {vuln.device}</p>
               </div>
               <button className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-mono text-sm transition-all">
-                INVESTIGATE
+                {t.dashboard.investigate}
               </button>
             </div>
           </div>

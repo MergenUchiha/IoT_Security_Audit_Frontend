@@ -1,13 +1,17 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { Shield } from 'lucide-react';
 import { riskDistribution } from '../../data/mockData';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const RiskDistribution = () => {
+  const { t, theme } = useTheme();
+  const isDark = theme === 'dark';
+
   return (
-    <div className="bg-gray-900 border border-cyan-500/30 rounded-lg p-6">
-      <h3 className="text-lg font-bold text-white mb-4 font-mono flex items-center gap-2">
-        <Shield className="w-5 h-5 text-cyan-400" />
-        RISK DISTRIBUTION
+    <div className="bg-primary border border-primary rounded-lg p-6">
+      <h3 className="text-lg font-bold text-primary mb-4 font-mono flex items-center gap-2">
+        <Shield className="w-5 h-5 accent-cyan" />
+        {t.dashboard.riskDistribution}
       </h3>
       <ResponsiveContainer width="100%" height={250}>
         <PieChart>
@@ -27,10 +31,11 @@ const RiskDistribution = () => {
           </Pie>
           <Tooltip 
             contentStyle={{ 
-              backgroundColor: '#1f2937', 
-              border: '1px solid #06b6d4', 
+              backgroundColor: isDark ? '#1f2937' : '#ffffff', 
+              border: `1px solid ${isDark ? '#06b6d4' : '#0891b2'}`, 
               borderRadius: '8px', 
-              fontFamily: 'monospace' 
+              fontFamily: 'monospace',
+              color: isDark ? '#ffffff' : '#111827'
             }}
           />
         </PieChart>

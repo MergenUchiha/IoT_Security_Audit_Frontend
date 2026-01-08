@@ -1,4 +1,5 @@
 import { Eye, Cpu, Lock, Network, HardDrive, AlertTriangle } from 'lucide-react';
+import { useTheme } from '../../contexts/ThemeContext';
 import type { Device } from '../../types';
 
 interface DeviceCardProps {
@@ -7,6 +8,8 @@ interface DeviceCardProps {
 }
 
 const DeviceCard = ({ device, onClick }: DeviceCardProps) => {
+  const { t } = useTheme();
+
   const getIcon = (type: string) => {
     switch (type) {
       case 'Camera':
@@ -18,7 +21,7 @@ const DeviceCard = ({ device, onClick }: DeviceCardProps) => {
       case 'Network':
         return <Network className="w-5 h-5 text-green-400" />;
       default:
-        return <HardDrive className="w-5 h-5 text-cyan-400" />;
+        return <HardDrive className="w-5 h-5 accent-cyan" />;
     }
   };
 
@@ -40,19 +43,19 @@ const DeviceCard = ({ device, onClick }: DeviceCardProps) => {
   const getRiskColor = (risk: string) => {
     switch (risk) {
       case 'critical':
-        return 'text-red-400';
+        return 'accent-red';
       case 'high':
-        return 'text-orange-400';
+        return 'accent-orange';
       case 'medium':
-        return 'text-yellow-400';
+        return 'accent-yellow';
       default:
-        return 'text-green-400';
+        return 'accent-green';
     }
   };
 
   return (
     <div 
-      className="bg-gray-900 border border-cyan-500/30 rounded-lg p-6 hover:border-cyan-400 transition-all cursor-pointer hover:shadow-lg hover:shadow-cyan-500/20"
+      className="bg-primary border border-primary rounded-lg p-6 card cursor-pointer"
       onClick={() => onClick(device)}
     >
       <div className="flex items-start justify-between mb-4">
@@ -61,8 +64,8 @@ const DeviceCard = ({ device, onClick }: DeviceCardProps) => {
             {getIcon(device.type)}
           </div>
           <div>
-            <h3 className="text-white font-bold font-mono">{device.name}</h3>
-            <p className="text-gray-400 text-sm font-mono">{device.ip}</p>
+            <h3 className="text-primary font-bold font-mono">{device.name}</h3>
+            <p className="text-tertiary text-sm font-mono">{device.ip}</p>
           </div>
         </div>
         <div 
@@ -74,31 +77,31 @@ const DeviceCard = ({ device, onClick }: DeviceCardProps) => {
 
       <div className="space-y-2 mb-4">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-400 font-mono">Type:</span>
-          <span className="text-white font-mono">{device.type}</span>
+          <span className="text-tertiary font-mono">{t.devices.type}:</span>
+          <span className="text-primary font-mono">{device.type}</span>
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-400 font-mono">Manufacturer:</span>
-          <span className="text-white font-mono">{device.manufacturer}</span>
+          <span className="text-tertiary font-mono">{t.devices.manufacturer}:</span>
+          <span className="text-primary font-mono">{device.manufacturer}</span>
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-400 font-mono">Firmware:</span>
-          <span className="text-cyan-400 font-mono">{device.firmware}</span>
+          <span className="text-tertiary font-mono">{t.devices.firmware}:</span>
+          <span className="accent-cyan font-mono">{device.firmware}</span>
         </div>
       </div>
 
-      <div className="flex items-center justify-between pt-4 border-t border-gray-800">
+      <div className="flex items-center justify-between pt-4 border-t border-secondary">
         <div className="flex items-center gap-2">
           <AlertTriangle className={`w-4 h-4 ${getRiskColor(device.risk)}`} />
           <span className={`text-sm font-mono font-bold ${getRiskColor(device.risk)}`}>
-            {device.risk.toUpperCase()}
+            {t.risk[device.risk]}
           </span>
         </div>
-        <span className="text-gray-400 text-sm font-mono">{device.vulnerabilities} vulns</span>
+        <span className="text-tertiary text-sm font-mono">{device.vulnerabilities} {t.devices.vulnerabilities}</span>
       </div>
 
       <button className="w-full mt-4 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-mono font-bold transition-all">
-        START AUDIT
+        {t.devices.startAudit}
       </button>
     </div>
   );

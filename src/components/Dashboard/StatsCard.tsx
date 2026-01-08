@@ -10,19 +10,21 @@ interface StatsCardProps {
 
 const StatsCard = ({ icon: Icon, label, value, trend, color }: StatsCardProps) => {
   return (
-    <div className="bg-gray-900 border border-cyan-500/30 rounded-lg p-6 hover:border-cyan-400 transition-all hover:shadow-lg hover:shadow-cyan-500/20">
+    <div 
+      className="bg-primary border border-primary rounded-lg p-6 transition-all card"
+    >
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-gray-400 text-sm font-mono uppercase tracking-wider">{label}</p>
-          <p className="text-3xl font-bold text-white mt-2 font-mono">{value}</p>
+          <p className="text-tertiary text-sm font-mono uppercase tracking-wider">{label}</p>
+          <p className="text-3xl font-bold text-primary mt-2 font-mono">{value}</p>
           {trend !== undefined && (
             <div className="flex items-center mt-2 text-sm">
               {trend > 0 ? (
-                <TrendingUp className="w-4 h-4 text-red-400 mr-1" />
+                <TrendingUp className="w-4 h-4 accent-red mr-1" />
               ) : (
-                <TrendingDown className="w-4 h-4 text-green-400 mr-1" />
+                <TrendingDown className="w-4 h-4 accent-green mr-1" />
               )}
-              <span className={trend > 0 ? 'text-red-400' : 'text-green-400'}>
+              <span className={trend > 0 ? 'accent-red' : 'accent-green'}>
                 {Math.abs(trend)}%
               </span>
             </div>

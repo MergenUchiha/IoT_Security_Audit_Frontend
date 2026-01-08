@@ -10,9 +10,22 @@ export const api = axios.create({
   timeout: 10000,
 });
 
-// Request interceptor for logging
+// Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
+    // Get token from localStorage
+    const authStorage = localStorage.getItem('auth-storage');
+    if (authStorage) {
+      try {
+        const { state } = JSON.parse(authStorage);
+        if (state?.token) {
+          config.headers.Authorization = `Bearer ${state.token}`;
+        }
+      } catch (error) {
+        console.error('Failed to parse auth storage:', error);
+      }
+    }
+
     console.log(`🔵 API Request: ${config.method?.toUpperCase()} ${config.url}`);
     return config;
   },
@@ -22,7 +35,7 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor for logging
+// Response interceptor for logging and error handling
 api.interceptors.response.use(
   (response) => {
     console.log(`🟢 API Response: ${response.config.method?.toUpperCase()} ${response.config.url}`, response.data);
@@ -30,9 +43,28 @@ api.interceptors.response.use(
   },
   (error) => {
     console.error('❌ API Response Error:', error.response?.data || error.message);
+    
+    // Handle 401 Unauthorized
+    if (error.response?.status === 401) {
+      // Clear auth and redirect to login
+      localStorage.removeItem('auth-storage');
+      window.location.href = '/login';
+    }
+    
     return Promise.reject(error);
   }
 );
+
+// ============================================
+// AUTH API
+// ============================================
+export const authApi = {
+  login: (email: string, password: string) => 
+    api.post('/auth/login', { email, password }),
+  register: (email: string, password: string, name: string) => 
+    api.post('/auth/register', { email, password, name }),
+  getProfile: () => api.get('/auth/profile'),
+};
 
 // ============================================
 // DEVICES API

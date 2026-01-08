@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { ThemeProvider } from './contexts/ThemeContext';
 import Layout from './components/Layout/Layout';
 import Dashboard from './pages/Dashboard';
 import Devices from './pages/Devices';
@@ -8,17 +9,19 @@ import Reports from './pages/Reports';
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Dashboard />} />
-          <Route path="devices" element={<Devices />} />
-          <Route path="scans" element={<Scans />} />
-          <Route path="vulnerabilities" element={<Vulnerabilities />} />
-          <Route path="reports" element={<Reports />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="devices" element={<Devices />} />
+            <Route path="scans" element={<Scans />} />
+            <Route path="vulnerabilities" element={<Vulnerabilities />} />
+            <Route path="reports" element={<Reports />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </ThemeProvider>
   );
 }
 

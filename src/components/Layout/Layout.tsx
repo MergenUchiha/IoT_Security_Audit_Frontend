@@ -1,45 +1,110 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { Shield, Network, Activity, AlertTriangle, FileText, Terminal } from 'lucide-react';
+import { Shield, Network, Activity, AlertTriangle, FileText, Terminal, Sun, Moon, Globe } from 'lucide-react';
+import { useTheme } from '../../contexts/ThemeContext';
+import { Locale, localeNames } from '../../i18n';
+import { useState } from 'react';
 
 interface NavItem {
   path: string;
-  label: string;
+  labelKey: keyof typeof import('../../i18n/locales/en').en.nav;
   icon: React.ElementType;
 }
 
 const Layout = () => {
+  const { theme, toggleTheme, locale, setLocale, t } = useTheme();
+  const [showLangMenu, setShowLangMenu] = useState(false);
+
   const navItems: NavItem[] = [
-    { path: '/', label: 'Dashboard', icon: Terminal },
-    { path: '/devices', label: 'Devices', icon: Network },
-    { path: '/scans', label: 'Scans', icon: Activity },
-    { path: '/vulnerabilities', label: 'Vulnerabilities', icon: AlertTriangle },
-    { path: '/reports', label: 'Reports', icon: FileText },
+    { path: '/', labelKey: 'dashboard', icon: Terminal },
+    { path: '/devices', labelKey: 'devices', icon: Network },
+    { path: '/scans', labelKey: 'scans', icon: Activity },
+    { path: '/vulnerabilities', labelKey: 'vulnerabilities', icon: AlertTriangle },
+    { path: '/reports', labelKey: 'reports', icon: FileText },
   ];
 
   return (
-    <div className="min-h-screen bg-cyber-darker">
+    <div className="min-h-screen bg-darker">
       {/* Header */}
-      <header className="bg-gray-900 border-b border-cyan-500/30 sticky top-0 z-50 backdrop-blur-sm bg-opacity-95">
+      <header className="bg-primary border-b border-primary sticky top-0 z-50 backdrop-blur-sm bg-opacity-95">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="relative">
-                <Shield className="w-8 h-8 text-cyan-400" />
+                <Shield className="w-8 h-8 accent-cyan" />
                 <div className="absolute inset-0 bg-cyan-400 blur-lg opacity-50"></div>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-white">IoT Security Audit</h1>
-                <p className="text-xs text-cyan-400">SYSTEM v1.0.0</p>
+                <h1 className="text-xl font-bold text-primary">{t.header.title}</h1>
+                <p className="text-xs accent-cyan">{t.header.subtitle}</p>
               </div>
             </div>
             
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 text-sm">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                <span className="text-green-400">ONLINE</span>
+                <span className="text-green-400">{t.common.online}</span>
               </div>
-              <div className="w-px h-6 bg-cyan-500/30"></div>
-              <button className="text-gray-400 hover:text-white transition-colors">
+              
+              <div className="w-px h-6 border-primary"></div>
+              
+              {/* Language Switcher */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowLangMenu(!showLangMenu)}
+                  className="flex items-center gap-2 px-3 py-2 rounded transition-all text-tertiary hover:text-primary"
+                  style={{ backgroundColor: theme === 'dark' ? 'rgba(31, 41, 55, 0.5)' : 'rgba(243, 244, 246, 0.8)' }}
+                >
+                  <Globe className="w-5 h-5" />
+                  <span className="text-sm font-bold">{localeNames[locale]}</span>
+                </button>
+                
+                {showLangMenu && (
+                  <div 
+                    className="absolute right-0 mt-2 py-2 w-40 rounded-lg shadow-xl border border-primary"
+                    style={{ backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff' }}
+                  >
+                    {(Object.keys(localeNames) as Locale[]).map((lang) => (
+                      <button
+                        key={lang}
+                        onClick={() => {
+                          setLocale(lang);
+                          setShowLangMenu(false);
+                        }}
+                        className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                          locale === lang 
+                            ? 'accent-cyan font-bold' 
+                            : 'text-tertiary hover:text-primary'
+                        }`}
+                        style={{ 
+                          backgroundColor: locale === lang 
+                            ? (theme === 'dark' ? 'rgba(6, 182, 212, 0.1)' : 'rgba(6, 182, 212, 0.15)') 
+                            : 'transparent' 
+                        }}
+                      >
+                        {localeNames[lang]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              {/* Theme Switcher */}
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded transition-all text-tertiary hover:text-primary"
+                style={{ backgroundColor: theme === 'dark' ? 'rgba(31, 41, 55, 0.5)' : 'rgba(243, 244, 246, 0.8)' }}
+                aria-label="Toggle theme"
+              >
+                {theme === 'dark' ? (
+                  <Sun className="w-5 h-5" />
+                ) : (
+                  <Moon className="w-5 h-5" />
+                )}
+              </button>
+              
+              <div className="w-px h-6 border-primary"></div>
+              
+              <button className="text-tertiary hover:text-primary transition-colors">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
@@ -50,7 +115,7 @@ const Layout = () => {
       </header>
 
       {/* Navigation */}
-      <nav className="bg-gray-900 border-b border-cyan-500/30">
+      <nav className="bg-primary border-b border-primary">
         <div className="container mx-auto px-6">
           <div className="flex items-center gap-1">
             {navItems.map((item) => {
@@ -63,17 +128,25 @@ const Layout = () => {
                   className={({ isActive }) =>
                     `flex items-center gap-2 px-6 py-4 transition-all relative group ${
                       isActive
-                        ? 'text-cyan-400 bg-cyan-500/10'
-                        : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                        ? 'accent-cyan'
+                        : 'text-tertiary hover:text-primary'
                     }`
                   }
+                  style={({ isActive }) => ({
+                    backgroundColor: isActive 
+                      ? (theme === 'dark' ? 'rgba(6, 182, 212, 0.1)' : 'rgba(6, 182, 212, 0.15)')
+                      : 'transparent'
+                  })}
                 >
                   {({ isActive }) => (
                     <>
                       <Icon className="w-5 h-5" />
-                      <span className="font-bold text-sm">{item.label}</span>
+                      <span className="font-bold text-sm">{t.nav[item.labelKey]}</span>
                       {isActive && (
-                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-400"></div>
+                        <div 
+                          className="absolute bottom-0 left-0 right-0 h-0.5" 
+                          style={{ backgroundColor: 'var(--accent-cyan)' }}
+                        ></div>
                       )}
                     </>
                   )}
@@ -90,14 +163,14 @@ const Layout = () => {
       </main>
 
       {/* Footer */}
-      <footer className="bg-gray-900 border-t border-cyan-500/30 mt-12">
+      <footer className="bg-primary border-t border-primary mt-12">
         <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between text-sm text-gray-400">
-            <p>© 2025 IoT Security Audit System. All rights reserved.</p>
+          <div className="flex items-center justify-between text-sm text-tertiary">
+            <p>{t.footer.copyright}</p>
             <div className="flex items-center gap-4">
-              <span>Build: 1.0.0-alpha</span>
+              <span>{t.footer.build}: 1.0.0-alpha</span>
               <span>•</span>
-              <span>API Status: Connected</span>
+              <span>{t.footer.apiStatus}: {t.common.connected}</span>
             </div>
           </div>
         </div>

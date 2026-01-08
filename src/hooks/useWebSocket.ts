@@ -15,43 +15,68 @@ export const useWebSocket = () => {
   useEffect(() => {
     console.log('🔌 Connecting to WebSocket:', WS_URL);
     
-    const ws = new WebSocket(WS_URL);
+    // Use Socket.IO client library format for NestJS WebSocket Gateway
+    const wsUrl = WS_URL.replace('ws://', 'http://').replace('wss://', 'https://');
+    
+    let ws: WebSocket;
+    let reconnectTimeout: NodeJS.Timeout;
 
-    ws.onopen = () => {
-      console.log('✅ WebSocket connected');
-      setConnected(true);
-    };
-
-    ws.onclose = () => {
-      console.log('❌ WebSocket disconnected');
-      setConnected(false);
-    };
-
-    ws.onerror = (error) => {
-      console.error('🔴 WebSocket error:', error);
-    };
-
-    ws.onmessage = (event) => {
+    const connect = () => {
       try {
-        const message = JSON.parse(event.data);
-        console.log('📨 WebSocket message:', message);
-        setLastMessage(message);
+        ws = new WebSocket(WS_URL);
+
+        ws.onopen = () => {
+          console.log('✅ WebSocket connected');
+          setConnected(true);
+        };
+
+        ws.onclose = () => {
+          console.log('❌ WebSocket disconnected, reconnecting in 3s...');
+          setConnected(false);
+          
+          // Reconnect after 3 seconds
+          reconnectTimeout = setTimeout(() => {
+            connect();
+          }, 3000);
+        };
+
+        ws.onerror = (error) => {
+          console.error('🔴 WebSocket error:', error);
+          setConnected(false);
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            console.log('📨 WebSocket message:', message);
+            setLastMessage(message);
+          } catch (error) {
+            console.error('Failed to parse WebSocket message:', error);
+          }
+        };
+
+        setSocket(ws);
       } catch (error) {
-        console.error('Failed to parse WebSocket message:', error);
+        console.error('Failed to create WebSocket connection:', error);
       }
     };
 
-    setSocket(ws);
+    connect();
 
     return () => {
       console.log('🔌 Closing WebSocket connection');
-      ws.close();
+      clearTimeout(reconnectTimeout);
+      if (ws) {
+        ws.close();
+      }
     };
   }, []);
 
   const sendMessage = useCallback((event: string, data: any) => {
-    if (socket && connected) {
+    if (socket && connected && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ event, data }));
+    } else {
+      console.warn('WebSocket not connected, cannot send message');
     }
   }, [socket, connected]);
 
