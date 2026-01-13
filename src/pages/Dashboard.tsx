@@ -1,132 +1,187 @@
-import { useState, useEffect } from 'react';
-import { Terminal, Wifi, AlertTriangle, Shield, Activity } from 'lucide-react';
-import StatsCard from '../components/Dashboard/StatsCard';
-import VulnerabilityTrends from '../components/Dashboard/VulnerabilityTrends';
-import NetworkTraffic from '../components/Dashboard/NetworkTraffic';
-import RiskDistribution from '../components/Dashboard/RiskDistribution';
-import ComplianceScore from '../components/Dashboard/ComplianceScore';
-import RecentAlerts from '../components/Dashboard/RecentAlerts';
-import ActivityFeed from '../components/Dashboard/ActivityFeed';
-import { analyticsApi } from '../services/api';
+import { useState, useEffect, useCallback } from 'react';
+import { analyticsApi, handleApiError } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { useTheme } from '../contexts/ThemeContext';
-import type { LiveMetrics } from '../types';
 
-const Dashboard = () => {
-  const { t } = useTheme();
-  const [liveMetrics, setLiveMetrics] = useState<LiveMetrics>({
-    devicesOnline: 0,
-    totalVulnerabilities: 0,
-    criticalIssues: 0,
-    scanningNow: 0,
-  });
+interface DashboardMetrics {
+  devicesOnline: number;
+  totalDevices: number;
+  totalVulnerabilities: number;
+  criticalIssues: number;
+  metrics?: any;
+}
+
+export default function Dashboard() {
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
-  const { connected } = useWebSocket();
+  const [error, setError] = useState<string | null>(null);
+  const { isConnected, on, off } = useWebSocket();
 
-  useEffect(() => {
-    const fetchDashboard = async () => {
-      try {
-        const response = await analyticsApi.getDashboard();
-        const data = response.data;
-        
-        setLiveMetrics({
-          devicesOnline: data.devicesOnline || 0,
-          totalVulnerabilities: data.totalVulnerabilities || 0,
-          criticalIssues: data.criticalIssues || 0,
-          scanningNow: data.activeScans || 0,
-        });
-      } catch (error) {
-        console.error('Failed to fetch dashboard data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchDashboard();
-    
-    const interval = setInterval(fetchDashboard, 30000);
-    return () => clearInterval(interval);
+  // Fetch dashboard data
+  const fetchDashboard = useCallback(async () => {
+    try {
+      setError(null);
+      const response = await analyticsApi.getDashboard();
+      setMetrics(response.data);
+    } catch (err: any) {
+      const errorMessage = handleApiError(err);
+      console.error('Failed to fetch dashboard data:', err);
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-primary font-mono flex items-center gap-3">
-            <Terminal className="w-8 h-8 accent-cyan" />
-            {t.dashboard.title}
-          </h1>
-          <p className="text-tertiary mt-1 font-mono text-sm">{t.dashboard.subtitle}</p>
+  // Initial fetch
+  useEffect(() => {
+    fetchDashboard();
+  }, [fetchDashboard]);
+
+  // WebSocket real-time updates
+  useEffect(() => {
+    if (!isConnected) return;
+
+    const handleAnalyticsUpdate = (data: any) => {
+      console.log('📊 Analytics update received:', data);
+      setMetrics((prev) => ({
+        ...prev,
+        ...data,
+      }));
+    };
+
+    const handleDeviceUpdate = () => {
+      // Refetch on device changes
+      fetchDashboard();
+    };
+
+    on('analyticsUpdate', handleAnalyticsUpdate);
+    on('deviceUpdate', handleDeviceUpdate);
+    on('deviceStatusUpdate', handleDeviceUpdate);
+
+    return () => {
+      off('analyticsUpdate', handleAnalyticsUpdate);
+      off('deviceUpdate', handleDeviceUpdate);
+      off('deviceStatusUpdate', handleDeviceUpdate);
+    };
+  }, [isConnected, on, off, fetchDashboard]);
+
+  // Auto-refresh every 30 seconds (instead of continuous polling)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!loading) {
+        fetchDashboard();
+      }
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [fetchDashboard, loading]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyber-primary mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading dashboard...</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className={`flex items-center gap-2 text-sm font-mono ${connected ? 'text-green-400' : 'accent-red'}`}>
-            <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
-            {connected ? t.header.websocketConnected : t.header.websocketDisconnected}
-          </div>
-          <div className="w-px h-6 border-primary"></div>
-          <div className="flex items-center gap-2 text-green-400 font-mono text-sm">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-            {t.header.apiConnected}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center max-w-md">
+          <div className="text-red-500 text-6xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-white mb-2">Connection Error</h2>
+          <p className="text-gray-400 mb-4">{error}</p>
+          <button
+            onClick={fetchDashboard}
+            className="px-6 py-2 bg-cyber-primary text-white rounded-lg hover:bg-opacity-80 transition"
+          >
+            Retry
+          </button>
+          <div className="mt-6 text-sm text-gray-500">
+            <p>Make sure backend is running on:</p>
+            <code className="bg-gray-800 px-2 py-1 rounded">http://localhost:3001</code>
           </div>
         </div>
       </div>
+    );
+  }
 
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="text-center">
-            <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="accent-cyan font-mono">{t.dashboard.loadingData}</p>
+  return (
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-white">Dashboard</h1>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isConnected ? 'bg-green-500' : 'bg-red-500'
+              }`}
+            ></span>
+            <span className="text-sm text-gray-400">
+              {isConnected ? 'Connected' : 'Disconnected'}
+            </span>
+          </div>
+          <button
+            onClick={fetchDashboard}
+            disabled={loading}
+            className="px-4 py-2 bg-cyber-primary text-white rounded-lg hover:bg-opacity-80 transition disabled:opacity-50"
+          >
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="bg-cyber-dark border border-gray-700 rounded-lg p-6">
+          <h3 className="text-gray-400 text-sm font-medium mb-2">Total Devices</h3>
+          <p className="text-3xl font-bold text-white">{metrics?.totalDevices || 0}</p>
+        </div>
+
+        <div className="bg-cyber-dark border border-gray-700 rounded-lg p-6">
+          <h3 className="text-gray-400 text-sm font-medium mb-2">Devices Online</h3>
+          <p className="text-3xl font-bold text-green-500">{metrics?.devicesOnline || 0}</p>
+        </div>
+
+        <div className="bg-cyber-dark border border-gray-700 rounded-lg p-6">
+          <h3 className="text-gray-400 text-sm font-medium mb-2">Total Vulnerabilities</h3>
+          <p className="text-3xl font-bold text-yellow-500">
+            {metrics?.totalVulnerabilities || 0}
+          </p>
+        </div>
+
+        <div className="bg-cyber-dark border border-gray-700 rounded-lg p-6">
+          <h3 className="text-gray-400 text-sm font-medium mb-2">Critical Issues</h3>
+          <p className="text-3xl font-bold text-red-500">{metrics?.criticalIssues || 0}</p>
+        </div>
+      </div>
+
+      <div className="bg-cyber-dark border border-gray-700 rounded-lg p-6">
+        <h2 className="text-xl font-bold text-white mb-4">System Status</h2>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-gray-400">Backend Connection</span>
+            <span className="text-green-500 font-medium">✓ Connected</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-400">WebSocket</span>
+            <span
+              className={`font-medium ${
+                isConnected ? 'text-green-500' : 'text-red-500'
+              }`}
+            >
+              {isConnected ? '✓ Connected' : '✗ Disconnected'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-400">Last Updated</span>
+            <span className="text-gray-400 text-sm">
+              {new Date().toLocaleTimeString()}
+            </span>
           </div>
         </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <StatsCard 
-              icon={Wifi} 
-              label={t.dashboard.devicesOnline} 
-              value={liveMetrics.devicesOnline} 
-              color="from-cyan-600 to-blue-600"
-            />
-            <StatsCard 
-              icon={AlertTriangle} 
-              label={t.dashboard.totalVulnerabilities} 
-              value={liveMetrics.totalVulnerabilities} 
-              color="from-orange-600 to-red-600"
-            />
-            <StatsCard 
-              icon={Shield} 
-              label={t.dashboard.criticalIssues} 
-              value={liveMetrics.criticalIssues} 
-              color="from-red-600 to-pink-600"
-            />
-            <StatsCard 
-              icon={Activity} 
-              label={t.dashboard.activeScans} 
-              value={liveMetrics.scanningNow} 
-              color="from-green-600 to-emerald-600"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <VulnerabilityTrends />
-            <NetworkTraffic />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <RiskDistribution />
-            <ComplianceScore />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <RecentAlerts />
-            </div>
-            <ActivityFeed />
-          </div>
-        </>
-      )}
+      </div>
     </div>
   );
-};
-
-export default Dashboard;
+}
