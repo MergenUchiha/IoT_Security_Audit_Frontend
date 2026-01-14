@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Shield, HardDrive, Activity, ChevronDown, FileDown, Eye, XCircle, AlertTriangle } from 'lucide-react';
 import { vulnerabilitiesApi, devicesApi } from '../services/api';
 import { useTheme } from '../contexts/ThemeContext';
+import { useNotification } from '../contexts/NotificationContext';
 import type { Vulnerability } from '../types';
 
 // Компонент модального окна деталей уязвимости
@@ -12,6 +13,7 @@ interface VulnerabilityModalProps {
 
 const VulnerabilityModal = ({ vulnerability, onClose }: VulnerabilityModalProps) => {
   const { t } = useTheme();
+  const { showSuccess } = useNotification();
   
   if (!vulnerability) return null;
 
@@ -38,6 +40,7 @@ const VulnerabilityModal = ({ vulnerability, onClose }: VulnerabilityModalProps)
     linkElement.setAttribute('download', exportFileDefaultName);
     linkElement.click();
     
+    showSuccess('Export Complete', `${vulnerability.id} exported successfully`);
     onClose();
   };
 
@@ -177,6 +180,7 @@ const VulnerabilityModal = ({ vulnerability, onClose }: VulnerabilityModalProps)
 // Основной компонент
 const Vulnerabilities = () => {
   const { t } = useTheme();
+  const { showError } = useNotification();
   const [vulnerabilities, setVulnerabilities] = useState<Vulnerability[]>([]);
   const [devices, setDevices] = useState<any[]>([]);
   const [selectedVuln, setSelectedVuln] = useState<Vulnerability | null>(null);
@@ -200,13 +204,14 @@ const Vulnerabilities = () => {
         setStats(statsResponse.data);
       } catch (error) {
         console.error('Failed to fetch data:', error);
+        showError('Error', 'Failed to load vulnerabilities data');
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, []);
+  }, [showError]);
 
   useEffect(() => {
     const fetchFiltered = async () => {

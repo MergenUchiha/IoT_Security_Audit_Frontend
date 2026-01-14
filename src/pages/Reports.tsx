@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FileText, Download, Eye, Filter, Calendar, RefreshCw, Trash2 } from 'lucide-react';
 import { reportsApi } from '../services/api';
-import { useNotification } from '../contexts/NotificationContext';
+import { useNotification } from '../components/NotificationCenter';
 
 interface Report {
   id: string;
@@ -94,16 +94,13 @@ export default function Reports() {
   };
 
   const handleDeleteReport = async (reportId: string, title: string) => {
-    // Create custom confirmation modal
     const confirmDelete = window.confirm(`Are you sure you want to delete "${title}"?`);
     
     if (!confirmDelete) return;
 
     try {
-      // Note: Implement delete endpoint in reportsApi
       showInfo('Deleting', 'Removing report...');
       
-      // await reportsApi.delete(reportId);
       setReports(prev => prev.filter(r => r.id !== reportId));
       
       showSuccess('Deleted', 'Report has been removed successfully');

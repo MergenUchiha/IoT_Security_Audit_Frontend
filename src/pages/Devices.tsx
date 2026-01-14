@@ -5,7 +5,7 @@ import DeviceCard from '../components/Devices/DeviceCard';
 import DeviceModal from '../components/Devices/DeviceModal';
 import { devicesApi, scansApi } from '../services/api';
 import { useTheme } from '../contexts/ThemeContext';
-import { useNotification } from '../contexts/NotificationContext';
+import { useNotification } from '../components/NotificationCenter';
 import { useWebSocket } from '../hooks/useWebSocket';
 import type { Device } from '../types';
 

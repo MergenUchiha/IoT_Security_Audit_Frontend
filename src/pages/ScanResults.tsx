@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { scansApi } from '../services/api';
 import { useTheme } from '../contexts/ThemeContext';
-import { useNotification } from '../components/NotificationCenter';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface ScanPhase {
   phase: string;
