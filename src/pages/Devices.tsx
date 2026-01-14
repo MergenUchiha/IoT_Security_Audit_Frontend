@@ -1,80 +1,109 @@
 import { useState, useEffect } from 'react';
-import { Network, Search, Activity } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Network, Search, Activity, Eye } from 'lucide-react';
 import DeviceCard from '../components/Devices/DeviceCard';
 import DeviceModal from '../components/Devices/DeviceModal';
 import { devicesApi, scansApi } from '../services/api';
 import { useTheme } from '../contexts/ThemeContext';
+import { useNotification } from '../contexts/NotificationContext';
 import { useWebSocket } from '../hooks/useWebSocket';
 import type { Device } from '../types';
 
 const Devices = () => {
   const { t } = useTheme();
+  const navigate = useNavigate();
+  const { showSuccess, showError, showInfo } = useNotification();
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [auditingDeviceId, setAuditingDeviceId] = useState<number | null>(null);
+  const [auditingDevices, setAuditingDevices] = useState<Set<number>>(new Set());
   const [scanningMessage, setScanningMessage] = useState('');
   const { on, off } = useWebSocket();
 
   useEffect(() => {
-    const fetchDevices = async () => {
-      try {
-        const response = await devicesApi.getAll();
-        const transformedDevices = response.data.map((device: any) => ({
-          id: device.id,
-          name: device.name,
-          ip: device.ip,
-          type: device.type,
-          status: device.status,
-          risk: device.risk,
-          vulnerabilities: device.vulnerabilities || device._count?.deviceVulns || 0,
-          lastScan: device.lastScan 
-            ? new Date(device.lastScan).toLocaleString()
-            : 'Never',
-          manufacturer: device.manufacturer,
-          firmware: device.firmware,
-          ports: device.ports || [],
-          services: device.services || [],
-        }));
-        setDevices(transformedDevices);
-      } catch (error) {
-        console.error('Failed to fetch devices:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchDevices();
   }, []);
 
+  const fetchDevices = async () => {
+    try {
+      const response = await devicesApi.getAll();
+      const transformedDevices = response.data.map((device: any) => ({
+        id: device.id,
+        name: device.name,
+        ip: device.ip,
+        type: device.type,
+        status: device.status,
+        risk: device.risk,
+        vulnerabilities: device.vulnerabilities || device._count?.deviceVulns || 0,
+        lastScan: device.lastScan 
+          ? new Date(device.lastScan).toLocaleString()
+          : 'Never',
+        manufacturer: device.manufacturer,
+        firmware: device.firmware,
+        ports: device.ports || [],
+        services: device.services || [],
+      }));
+      setDevices(transformedDevices);
+    } catch (error) {
+      console.error('Failed to fetch devices:', error);
+      showError('Error', 'Failed to load devices');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Listen for scan updates via WebSocket
   useEffect(() => {
-    const handleScanProgress = (data: any) => {
-      console.log('Scan progress update:', data);
-      if (data.deviceId && parseInt(data.deviceId) === auditingDeviceId) {
-        setScanningMessage(`Scanning: ${data.status} (${data.progress}%)`);
-      }
-    };
-
     const handleScanCompleted = (data: any) => {
-      console.log('Scan completed:', data);
-      if (data.deviceId && parseInt(data.deviceId) === auditingDeviceId) {
-        setAuditingDeviceId(null);
-        setScanningMessage('');
-        alert(`Scan completed for device ${data.deviceId}`);
+      console.log('✅ Scan completed:', data);
+      const deviceId = parseInt(data.deviceId);
+      
+      if (auditingDevices.has(deviceId)) {
+        setAuditingDevices(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(deviceId);
+          return newSet;
+        });
+        
+        showSuccess(
+          'Scan Completed',
+          `${data.deviceName || 'Device'} scan finished. ${data.vulnerabilitiesFound || 0} vulnerabilities found.`
+        );
+        
+        // Show view results button
+        setTimeout(() => {
+          const viewResults = confirm(`View scan results for ${data.deviceName}?`);
+          if (viewResults) {
+            navigate(`/scans/${data.scanId}`);
+          }
+        }, 1000);
+        
+        fetchDevices();
       }
     };
 
-    on('scanProgress', handleScanProgress);
+    const handleScanUpdate = (data: any) => {
+      console.log('🔄 Scan update:', data);
+      const deviceId = parseInt(data.deviceId);
+      
+      if (auditingDevices.has(deviceId) && data.phases?.phases) {
+        const phases = data.phases.phases;
+        const completedPhases = phases.filter((p: any) => p.status === 'completed').length;
+        const totalPhases = phases.length;
+        setScanningMessage(`${completedPhases}/${totalPhases} phases completed`);
+      }
+    };
+
     on('scanCompleted', handleScanCompleted);
+    on('scanUpdate', handleScanUpdate);
 
     return () => {
-      off('scanProgress', handleScanProgress);
       off('scanCompleted', handleScanCompleted);
+      off('scanUpdate', handleScanUpdate);
     };
-  }, [auditingDeviceId, on, off]);
+  }, [auditingDevices, on, off, navigate, showSuccess]);
 
   const handleScanNetwork = () => {
     setScanning(true);
@@ -106,6 +135,8 @@ const Devices = () => {
           setTimeout(() => {
             setScanning(false);
             setScanningMessage('');
+            showInfo('Scan Complete', 'Network scan completed successfully');
+            fetchDevices();
           }, 500);
           return 100;
         }
@@ -116,41 +147,52 @@ const Devices = () => {
 
   const handleStartAudit = async (device: Device) => {
     try {
-      setAuditingDeviceId(device.id);
-      setScanningMessage(`Starting audit for ${device.name}...`);
+      setAuditingDevices(prev => new Set(prev).add(device.id));
       
-      console.log('Starting audit for device:', device.id);
+      showInfo('Starting Audit', `Initiating security scan for ${device.name}...`);
+      
+      console.log('🔍 Starting audit for device:', device.id);
       const response = await scansApi.create({
         deviceId: device.id.toString(),
         scanType: 'full',
       });
       
-      console.log('Audit started:', response.data);
-      setScanningMessage(`Audit in progress for ${device.name}...`);
+      console.log('✅ Audit started:', response.data);
       
-      // Show success notification
-      const notification = document.createElement('div');
-      notification.className = 'fixed top-4 right-4 bg-green-600 text-white px-6 py-4 rounded-lg shadow-lg font-mono z-50 animate-pulse';
-      notification.innerHTML = `
-        <div class="flex items-center gap-3">
-          <div class="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
-          <div>
-            <div class="font-bold">Audit Started</div>
-            <div class="text-sm">Scanning ${device.name}...</div>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(notification);
+      showSuccess(
+        'Audit Started',
+        `Scanning ${device.name}. This may take a few minutes...`
+      );
       
-      setTimeout(() => {
-        notification.remove();
-      }, 5000);
+    } catch (error: any) {
+      console.error('❌ Failed to start audit:', error);
+      setAuditingDevices(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(device.id);
+        return newSet;
+      });
+      showError(
+        'Audit Failed',
+        error.response?.data?.message || 'Failed to start audit. Please try again.'
+      );
+    }
+  };
+
+  const handleViewScanResults = async (device: Device) => {
+    try {
+      // Find the most recent scan for this device
+      const response = await scansApi.getAll({ deviceId: device.id.toString() });
+      const scans = response.data;
       
+      if (scans && scans.length > 0) {
+        const latestScan = scans[0];
+        navigate(`/scans/${latestScan.id}`);
+      } else {
+        showInfo('No Results', 'No scan results available for this device yet.');
+      }
     } catch (error) {
-      console.error('Failed to start audit:', error);
-      setAuditingDeviceId(null);
-      setScanningMessage('');
-      alert('Failed to start audit. Please try again.');
+      console.error('Failed to fetch scans:', error);
+      showError('Error', 'Failed to load scan results');
     }
   };
 
@@ -171,13 +213,15 @@ const Devices = () => {
         </button>
       </div>
 
-      {/* Active Scan Indicator */}
-      {auditingDeviceId && (
+      {/* Active Scans Indicator */}
+      {auditingDevices.size > 0 && (
         <div className="bg-cyan-900/30 border border-cyan-500 rounded-lg p-4">
           <div className="flex items-center gap-3">
             <Activity className="w-5 h-5 accent-cyan animate-pulse" />
             <div className="flex-1">
-              <p className="accent-cyan font-mono font-bold">Active Audit in Progress</p>
+              <p className="accent-cyan font-mono font-bold">
+                {auditingDevices.size} Active Audit{auditingDevices.size > 1 ? 's' : ''} in Progress
+              </p>
               <p className="text-tertiary text-sm font-mono">{scanningMessage}</p>
             </div>
           </div>
@@ -212,17 +256,36 @@ const Devices = () => {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {devices.map((device) => (
-            <DeviceCard 
-              key={device.id} 
-              device={device} 
-              onClick={setSelectedDevice}
-              onStartAudit={handleStartAudit}
-              isAuditing={auditingDeviceId === device.id}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {devices.map((device) => (
+              <div key={device.id} className="relative">
+                <DeviceCard 
+                  device={device} 
+                  onClick={setSelectedDevice}
+                  onStartAudit={handleStartAudit}
+                  isAuditing={auditingDevices.has(device.id)}
+                />
+                {device.lastScan !== 'Never' && (
+                  <button
+                    onClick={() => handleViewScanResults(device)}
+                    className="absolute top-2 right-2 p-2 bg-gray-800/90 hover:bg-gray-700 border border-cyan-500 rounded-lg transition-all z-10"
+                    title="View scan results"
+                  >
+                    <Eye className="w-4 h-4 text-cyan-400" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {devices.length === 0 && (
+            <div className="text-center py-20">
+              <Network className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+              <p className="text-gray-400 font-mono">No devices found. Click "Scan Network" to discover devices.</p>
+            </div>
+          )}
+        </>
       )}
 
       <DeviceModal 

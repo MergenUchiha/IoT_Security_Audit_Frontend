@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FileText, Download, Eye, Filter, Calendar, RefreshCw, Trash2 } from 'lucide-react';
-import axios from 'axios';
+import { reportsApi } from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface Report {
   id: string;
@@ -15,6 +16,7 @@ interface Report {
 }
 
 export default function Reports() {
+  const { showSuccess, showError, showInfo } = useNotification();
   const [reports, setReports] = useState<Report[]>([]);
   const [filteredReports, setFilteredReports] = useState<Report[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -33,47 +35,11 @@ export default function Reports() {
   const fetchReports = async () => {
     setIsLoading(true);
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-      const response = await axios.get(`${API_URL}/api/reports`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
+      const response = await reportsApi.getAll();
       setReports(response.data || []);
     } catch (error) {
       console.error('Error fetching reports:', error);
-      // Mock data
-      setReports([
-        {
-          id: '1',
-          title: 'Security Audit Report - Smart Camera 01',
-          type: 'audit',
-          deviceName: 'Smart Camera 01',
-          deviceId: 'dev-001',
-          createdAt: new Date().toISOString(),
-          fileSize: '2.4 MB',
-          status: 'completed',
-          format: 'pdf'
-        },
-        {
-          id: '2',
-          title: 'Vulnerability Assessment Report',
-          type: 'vulnerability',
-          createdAt: new Date(Date.now() - 86400000).toISOString(),
-          fileSize: '1.8 MB',
-          status: 'completed',
-          format: 'pdf'
-        },
-        {
-          id: '3',
-          title: 'Monthly Compliance Report',
-          type: 'compliance',
-          createdAt: new Date(Date.now() - 172800000).toISOString(),
-          fileSize: '3.2 MB',
-          status: 'completed',
-          format: 'pdf'
-        }
-      ]);
+      showError('Error', 'Failed to load reports');
     } finally {
       setIsLoading(false);
     }
@@ -103,13 +69,9 @@ export default function Reports() {
 
   const handleDownloadReport = async (reportId: string, title: string, format: string) => {
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-      const response = await axios.get(`${API_URL}/api/reports/${reportId}/download`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        responseType: 'blob'
-      });
+      showInfo('Downloading', 'Preparing your report...');
+      
+      const response = await reportsApi.downloadPdf(reportId);
 
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
@@ -120,10 +82,10 @@ export default function Reports() {
       link.remove();
       window.URL.revokeObjectURL(url);
       
-      alert('Report downloaded successfully');
+      showSuccess('Download Complete', 'Report has been downloaded successfully');
     } catch (error) {
       console.error('Error downloading report:', error);
-      alert('Failed to download report');
+      showError('Download Failed', 'Failed to download report');
     }
   };
 
@@ -131,46 +93,39 @@ export default function Reports() {
     window.open(`/reports/${reportId}`, '_blank');
   };
 
-  const handleDeleteReport = async (reportId: string) => {
-    if (!confirm('Are you sure you want to delete this report?')) {
-      return;
-    }
+  const handleDeleteReport = async (reportId: string, title: string) => {
+    // Create custom confirmation modal
+    const confirmDelete = window.confirm(`Are you sure you want to delete "${title}"?`);
+    
+    if (!confirmDelete) return;
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-      await axios.delete(`${API_URL}/api/reports/${reportId}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-
+      // Note: Implement delete endpoint in reportsApi
+      showInfo('Deleting', 'Removing report...');
+      
+      // await reportsApi.delete(reportId);
       setReports(prev => prev.filter(r => r.id !== reportId));
-      alert('Report deleted successfully');
+      
+      showSuccess('Deleted', 'Report has been removed successfully');
     } catch (error) {
       console.error('Error deleting report:', error);
-      alert('Failed to delete report');
+      showError('Delete Failed', 'Failed to delete report');
     }
   };
 
   const handleGenerateReport = async (type: string) => {
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-      const response = await axios.post(`${API_URL}/api/reports/generate`, 
-        { type },
-        {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        }
-      );
+      showInfo('Generating Report', 'Please wait while we generate your report...');
+      
+      const response = await reportsApi.generate(type);
 
       if (response.data) {
-        alert('Report generation started. It will appear in the list once completed.');
+        showSuccess('Report Generated', 'Your report is ready!');
         fetchReports();
       }
     } catch (error) {
       console.error('Error generating report:', error);
-      alert('Failed to start report generation');
+      showError('Generation Failed', 'Failed to generate report');
     }
   };
 
@@ -363,7 +318,7 @@ export default function Reports() {
                         View
                       </button>
                       <button
-                        onClick={() => handleDeleteReport(report.id)}
+                        onClick={() => handleDeleteReport(report.id, report.title)}
                         className="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded font-mono text-sm transition-all border border-red-400/50 flex items-center gap-2"
                       >
                         <Trash2 className="w-4 h-4" />

@@ -16,7 +16,7 @@ export const useWebSocket = (): UseWebSocketReturn => {
   const [isConnected, setIsConnected] = useState(false);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
   const reconnectAttemptsRef = useRef(0);
-  const maxReconnectAttempts = 5;
+  const maxReconnectAttempts = 10;
   const reconnectDelay = 3000;
 
   const connect = useCallback(() => {
@@ -29,59 +29,89 @@ export const useWebSocket = (): UseWebSocketReturn => {
     }
 
     try {
+      console.log('🔌 [WebSocket] Connecting to:', SOCKET_URL);
+      
       socketRef.current = io(SOCKET_URL, {
         transports: ['websocket', 'polling'],
         reconnection: true,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
         reconnectionAttempts: maxReconnectAttempts,
-        timeout: 10000,
+        timeout: 20000,
         autoConnect: true,
+        forceNew: false,
+        withCredentials: true,
       });
 
       socketRef.current.on('connect', () => {
-        console.log('✅ WebSocket connected');
+        console.log('✅ [WebSocket] Connected successfully');
+        console.log('   Socket ID:', socketRef.current?.id);
+        console.log('   Transport:', socketRef.current?.io.engine.transport.name);
         setIsConnected(true);
         reconnectAttemptsRef.current = 0;
       });
 
       socketRef.current.on('connected', (data) => {
-        console.log('📨 Welcome message:', data);
+        console.log('📨 [WebSocket] Welcome message:', data);
       });
 
       socketRef.current.on('disconnect', (reason) => {
-        console.log('❌ WebSocket disconnected:', reason);
+        console.log('❌ [WebSocket] Disconnected:', reason);
         setIsConnected(false);
 
+        // Auto-reconnect logic
         if (reason === 'io server disconnect') {
-          socketRef.current?.connect();
+          // Server initiated disconnect, reconnect manually
+          setTimeout(() => {
+            console.log('🔄 [WebSocket] Attempting manual reconnect...');
+            socketRef.current?.connect();
+          }, 1000);
         } else if (reason === 'transport close' || reason === 'transport error') {
           if (reconnectAttemptsRef.current < maxReconnectAttempts) {
             reconnectTimeoutRef.current = setTimeout(() => {
               reconnectAttemptsRef.current++;
+              console.log(`🔄 [WebSocket] Reconnect attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts}`);
               connect();
             }, reconnectDelay);
+          } else {
+            console.error('❌ [WebSocket] Max reconnection attempts reached');
           }
         }
       });
 
       socketRef.current.on('connect_error', (error) => {
-        console.warn('🔴 WebSocket connection error:', error.message);
+        console.warn('🔴 [WebSocket] Connection error:', error.message);
         setIsConnected(false);
         reconnectAttemptsRef.current++;
+        
+        if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+          console.log(`⏳ [WebSocket] Will retry in ${reconnectDelay/1000}s...`);
+        }
       });
 
       socketRef.current.on('error', (error) => {
-        console.error('🔴 WebSocket error:', error);
+        console.error('🔴 [WebSocket] Error:', error);
       });
 
-      socketRef.current.io.on('reconnect', () => {
-        console.log('✅ Reconnected');
+      socketRef.current.io.on('reconnect', (attemptNumber) => {
+        console.log('✅ [WebSocket] Reconnected after', attemptNumber, 'attempts');
         reconnectAttemptsRef.current = 0;
       });
 
+      socketRef.current.io.on('reconnect_attempt', (attemptNumber) => {
+        console.log('🔄 [WebSocket] Reconnection attempt:', attemptNumber);
+      });
+
+      socketRef.current.io.on('reconnect_error', (error) => {
+        console.error('🔴 [WebSocket] Reconnection error:', error.message);
+      });
+
+      socketRef.current.io.on('reconnect_failed', () => {
+        console.error('❌ [WebSocket] Reconnection failed - max attempts reached');
+      });
+
     } catch (error) {
-      console.error('❌ Failed to create WebSocket connection:', error);
+      console.error('❌ [WebSocket] Failed to create connection:', error);
     }
   }, []);
 
@@ -93,6 +123,7 @@ export const useWebSocket = (): UseWebSocketReturn => {
         clearTimeout(reconnectTimeoutRef.current);
       }
       if (socketRef.current) {
+        console.log('🔌 [WebSocket] Cleaning up connection');
         socketRef.current.removeAllListeners();
         socketRef.current.close();
         socketRef.current = null;
@@ -103,12 +134,16 @@ export const useWebSocket = (): UseWebSocketReturn => {
   const emit = useCallback((event: string, data?: any) => {
     if (socketRef.current?.connected) {
       socketRef.current.emit(event, data);
+      console.log('📤 [WebSocket] Emitted:', event, data);
+    } else {
+      console.warn('⚠️  [WebSocket] Cannot emit - not connected');
     }
   }, []);
 
   const on = useCallback((event: string, handler: (...args: any[]) => void) => {
     if (socketRef.current) {
       socketRef.current.on(event, handler);
+      console.log('👂 [WebSocket] Listening to:', event);
     }
   }, []);
 
@@ -119,6 +154,7 @@ export const useWebSocket = (): UseWebSocketReturn => {
       } else {
         socketRef.current.off(event);
       }
+      console.log('👋 [WebSocket] Stopped listening to:', event);
     }
   }, []);
 

@@ -4,19 +4,20 @@ import {
   ArrowLeft, Shield, Wifi, Activity, AlertTriangle, Play, Download, 
   Edit, Trash2, RefreshCw, CheckCircle, Clock, Calendar 
 } from 'lucide-react';
-import axios from 'axios';
+import { devicesApi, scansApi } from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
 
 interface Device {
   id: string;
   name: string;
   type: string;
-  ipAddress: string;
+  ip: string;
   manufacturer?: string;
   model?: string;
-  firmwareVersion?: string;
+  firmware?: string;
   location?: string;
   status: 'online' | 'offline' | 'scanning';
-  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  risk: 'low' | 'medium' | 'high' | 'critical';
   lastScan?: string;
   vulnerabilities?: number;
   description?: string;
@@ -36,6 +37,7 @@ interface AuditHistory {
 export default function DeviceDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { showSuccess, showError, showInfo } = useNotification();
   
   const [device, setDevice] = useState<Device | null>(null);
   const [auditHistory, setAuditHistory] = useState<AuditHistory[]>([]);
@@ -54,33 +56,11 @@ export default function DeviceDetails() {
   const fetchDeviceDetails = async () => {
     setIsLoading(true);
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-      const response = await axios.get(`${API_URL}/api/devices/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
+      const response = await devicesApi.getById(id!);
       setDevice(response.data);
     } catch (error) {
       console.error('Error fetching device:', error);
-      // Mock data
-      setDevice({
-        id: id || '1',
-        name: 'Smart Camera 01',
-        type: 'Smart Camera',
-        ipAddress: '192.168.1.100',
-        manufacturer: 'TP-Link',
-        model: 'C200',
-        firmwareVersion: '1.2.3',
-        location: 'Living Room',
-        status: 'online',
-        riskLevel: 'high',
-        lastScan: new Date().toISOString(),
-        vulnerabilities: 5,
-        description: 'Main security camera in living room',
-        createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-        updatedAt: new Date().toISOString()
-      });
+      showError('Error', 'Failed to load device details');
     } finally {
       setIsLoading(false);
     }
@@ -88,56 +68,27 @@ export default function DeviceDetails() {
 
   const fetchAuditHistory = async () => {
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-      const response = await axios.get(`${API_URL}/api/audits?deviceId=${id}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
+      const response = await scansApi.getAll({ deviceId: id });
       setAuditHistory(response.data || []);
     } catch (error) {
       console.error('Error fetching audit history:', error);
-      // Mock data
-      setAuditHistory([
-        {
-          id: '1',
-          startedAt: new Date().toISOString(),
-          completedAt: new Date(Date.now() + 300000).toISOString(),
-          status: 'completed',
-          vulnerabilitiesFound: 5,
-          riskScore: 7.5
-        },
-        {
-          id: '2',
-          startedAt: new Date(Date.now() - 86400000).toISOString(),
-          completedAt: new Date(Date.now() - 86100000).toISOString(),
-          status: 'completed',
-          vulnerabilitiesFound: 3,
-          riskScore: 6.2
-        }
-      ]);
     }
   };
 
   const handleRunAudit = async () => {
     setIsRunningAudit(true);
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-      await axios.post(`${API_URL}/api/audits/start`, 
-        { deviceId: id },
-        {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        }
-      );
+      await scansApi.create({
+        deviceId: id!,
+        scanType: 'full',
+      });
       
-      alert('Audit started successfully');
+      showSuccess('Audit Started', `Security audit for ${device?.name} has been initiated`);
       fetchDeviceDetails();
       fetchAuditHistory();
     } catch (error) {
       console.error('Error starting audit:', error);
-      alert('Failed to start audit');
+      showError('Audit Failed', 'Failed to start security audit');
     } finally {
       setIsRunningAudit(false);
     }
@@ -146,18 +97,13 @@ export default function DeviceDetails() {
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-      await axios.delete(`${API_URL}/api/devices/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
+      await devicesApi.delete(id!);
       
-      alert('Device deleted successfully');
+      showSuccess('Device Deleted', `${device?.name} has been removed successfully`);
       navigate('/devices');
     } catch (error) {
       console.error('Error deleting device:', error);
-      alert('Failed to delete device');
+      showError('Delete Failed', 'Failed to delete device');
     } finally {
       setIsDeleting(false);
       setShowDeleteConfirm(false);
@@ -266,8 +212,8 @@ export default function DeviceDetails() {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-gray-400">Risk Level</span>
-              <span className={`px-3 py-1 rounded text-xs font-bold uppercase border ${getRiskColor(device.riskLevel)}`}>
-                {device.riskLevel}
+              <span className={`px-3 py-1 rounded text-xs font-bold uppercase border ${getRiskColor(device.risk)}`}>
+                {device.risk}
               </span>
             </div>
             <div className="flex items-center justify-between">
@@ -283,7 +229,7 @@ export default function DeviceDetails() {
           <div className="space-y-3">
             <div>
               <span className="text-gray-400 text-sm">IP Address</span>
-              <p className="text-white font-mono">{device.ipAddress}</p>
+              <p className="text-white font-mono">{device.ip}</p>
             </div>
             {device.manufacturer && (
               <div>
@@ -291,22 +237,10 @@ export default function DeviceDetails() {
                 <p className="text-white">{device.manufacturer}</p>
               </div>
             )}
-            {device.model && (
-              <div>
-                <span className="text-gray-400 text-sm">Model</span>
-                <p className="text-white">{device.model}</p>
-              </div>
-            )}
-            {device.firmwareVersion && (
+            {device.firmware && (
               <div>
                 <span className="text-gray-400 text-sm">Firmware Version</span>
-                <p className="text-white font-mono">{device.firmwareVersion}</p>
-              </div>
-            )}
-            {device.location && (
-              <div>
-                <span className="text-gray-400 text-sm">Location</span>
-                <p className="text-white">{device.location}</p>
+                <p className="text-white font-mono">{device.firmware}</p>
               </div>
             )}
           </div>
@@ -409,7 +343,7 @@ export default function DeviceDetails() {
                   </div>
                   {audit.status === 'completed' && (
                     <button
-                      onClick={() => navigate(`/audits/${audit.id}`)}
+                      onClick={() => navigate(`/scans/${audit.id}`)}
                       className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-mono text-sm transition-all"
                     >
                       View Details

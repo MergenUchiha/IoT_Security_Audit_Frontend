@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Plus } from 'lucide-react';
-import api from '../../services/api';
+import { devicesApi } from '../../services/api';
+import { useNotification } from '../../contexts/NotificationContext';
 
 interface CreateDeviceModalProps {
   isOpen: boolean;
@@ -11,12 +12,11 @@ interface CreateDeviceModalProps {
 interface DeviceFormData {
   name: string;
   type: string;
-  ipAddress: string;
+  ip: string;
   manufacturer: string;
-  model: string;
-  firmwareVersion: string;
-  location: string;
-  description: string;
+  firmware: string;
+  ports: number[];
+  services: string[];
 }
 
 const deviceTypes = [
@@ -29,26 +29,32 @@ const deviceTypes = [
   'Smart Plug',
   'Motion Sensor',
   'Door Sensor',
+  'IoT Sensor',
+  'IoT Hub',
+  'Network',
+  'Access Control',
   'Other'
 ];
 
 export default function CreateDeviceModal({ isOpen, onClose, onDeviceCreated }: CreateDeviceModalProps) {
+  const { showSuccess, showError } = useNotification();
   const [formData, setFormData] = useState<DeviceFormData>({
     name: '',
     type: '',
-    ipAddress: '',
+    ip: '',
     manufacturer: '',
-    model: '',
-    firmwareVersion: '',
-    location: '',
-    description: ''
+    firmware: '',
+    ports: [],
+    services: [],
   });
 
+  const [portsInput, setPortsInput] = useState('');
+  const [servicesInput, setServicesInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errors, setErrors] = useState<Partial<DeviceFormData>>({});
+  const [errors, setErrors] = useState<Partial<Record<keyof DeviceFormData, string>>>({});
 
   const validateForm = (): boolean => {
-    const newErrors: Partial<DeviceFormData> = {};
+    const newErrors: Partial<Record<keyof DeviceFormData, string>> = {};
 
     if (!formData.name.trim()) {
       newErrors.name = 'Device name is required';
@@ -58,13 +64,21 @@ export default function CreateDeviceModal({ isOpen, onClose, onDeviceCreated }: 
       newErrors.type = 'Device type is required';
     }
 
-    if (!formData.ipAddress.trim()) {
-      newErrors.ipAddress = 'IP address is required';
+    if (!formData.ip.trim()) {
+      newErrors.ip = 'IP address is required';
     } else {
       const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
-      if (!ipRegex.test(formData.ipAddress)) {
-        newErrors.ipAddress = 'Invalid IP address format';
+      if (!ipRegex.test(formData.ip)) {
+        newErrors.ip = 'Invalid IP address format';
       }
+    }
+
+    if (!formData.manufacturer.trim()) {
+      newErrors.manufacturer = 'Manufacturer is required';
+    }
+
+    if (!formData.firmware.trim()) {
+      newErrors.firmware = 'Firmware version is required';
     }
 
     setErrors(newErrors);
@@ -81,35 +95,57 @@ export default function CreateDeviceModal({ isOpen, onClose, onDeviceCreated }: 
     setIsSubmitting(true);
 
     try {
-      const response = await api.createDevice(formData);
+      // Parse ports and services
+      const ports = portsInput
+        .split(',')
+        .map(p => parseInt(p.trim()))
+        .filter(p => !isNaN(p));
 
-      if (response) {
-        alert('Device created successfully!');
-        setFormData({
-          name: '',
-          type: '',
-          ipAddress: '',
-          manufacturer: '',
-          model: '',
-          firmwareVersion: '',
-          location: '',
-          description: ''
-        });
-        setErrors({});
-        if (onDeviceCreated) {
-          onDeviceCreated();
-        }
-        onClose();
+      const services = servicesInput
+        .split(',')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+      const deviceData = {
+        ...formData,
+        ports,
+        services,
+      };
+
+      await devicesApi.create(deviceData);
+
+      showSuccess('Device Created', `${formData.name} has been added successfully!`);
+      
+      // Reset form
+      setFormData({
+        name: '',
+        type: '',
+        ip: '',
+        manufacturer: '',
+        firmware: '',
+        ports: [],
+        services: [],
+      });
+      setPortsInput('');
+      setServicesInput('');
+      setErrors({});
+      
+      if (onDeviceCreated) {
+        onDeviceCreated();
       }
+      onClose();
     } catch (error: any) {
       console.error('Error creating device:', error);
-      alert(error.response?.data?.message || 'Failed to create device. Please try again.');
+      showError(
+        'Failed to Create Device',
+        error.response?.data?.message || 'An error occurred while creating the device.'
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     if (errors[name as keyof DeviceFormData]) {
@@ -122,13 +158,14 @@ export default function CreateDeviceModal({ isOpen, onClose, onDeviceCreated }: 
       setFormData({
         name: '',
         type: '',
-        ipAddress: '',
+        ip: '',
         manufacturer: '',
-        model: '',
-        firmwareVersion: '',
-        location: '',
-        description: ''
+        firmware: '',
+        ports: [],
+        services: [],
       });
+      setPortsInput('');
+      setServicesInput('');
       setErrors({});
       onClose();
     }
@@ -139,7 +176,7 @@ export default function CreateDeviceModal({ isOpen, onClose, onDeviceCreated }: 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 rounded-lg border border-gray-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
+        <div className="sticky top-0 bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between z-10">
           <h2 className="text-xl font-bold text-white font-mono">Add New Device</h2>
           <button
             onClick={handleClose}
@@ -190,87 +227,73 @@ export default function CreateDeviceModal({ isOpen, onClose, onDeviceCreated }: 
             </label>
             <input
               type="text"
-              name="ipAddress"
-              value={formData.ipAddress}
+              name="ip"
+              value={formData.ip}
               onChange={handleChange}
-              className={`w-full px-4 py-2 bg-gray-900 border ${errors.ipAddress ? 'border-red-500' : 'border-gray-700'} rounded text-white font-mono focus:outline-none focus:border-cyan-500 transition-colors`}
+              className={`w-full px-4 py-2 bg-gray-900 border ${errors.ip ? 'border-red-500' : 'border-gray-700'} rounded text-white font-mono focus:outline-none focus:border-cyan-500 transition-colors`}
               placeholder="192.168.1.100"
             />
-            {errors.ipAddress && <p className="text-red-500 text-sm mt-1">{errors.ipAddress}</p>}
+            {errors.ip && <p className="text-red-500 text-sm mt-1">{errors.ip}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Manufacturer
+                Manufacturer <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 name="manufacturer"
                 value={formData.manufacturer}
                 onChange={handleChange}
-                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded text-white font-mono focus:outline-none focus:border-cyan-500 transition-colors"
+                className={`w-full px-4 py-2 bg-gray-900 border ${errors.manufacturer ? 'border-red-500' : 'border-gray-700'} rounded text-white font-mono focus:outline-none focus:border-cyan-500 transition-colors`}
                 placeholder="e.g., TP-Link"
               />
+              {errors.manufacturer && <p className="text-red-500 text-sm mt-1">{errors.manufacturer}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Model
+                Firmware Version <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
-                name="model"
-                value={formData.model}
+                name="firmware"
+                value={formData.firmware}
                 onChange={handleChange}
-                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded text-white font-mono focus:outline-none focus:border-cyan-500 transition-colors"
-                placeholder="e.g., C200"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Firmware Version
-              </label>
-              <input
-                type="text"
-                name="firmwareVersion"
-                value={formData.firmwareVersion}
-                onChange={handleChange}
-                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded text-white font-mono focus:outline-none focus:border-cyan-500 transition-colors"
+                className={`w-full px-4 py-2 bg-gray-900 border ${errors.firmware ? 'border-red-500' : 'border-gray-700'} rounded text-white font-mono focus:outline-none focus:border-cyan-500 transition-colors`}
                 placeholder="e.g., 1.2.3"
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Location
-              </label>
-              <input
-                type="text"
-                name="location"
-                value={formData.location}
-                onChange={handleChange}
-                className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded text-white font-mono focus:outline-none focus:border-cyan-500 transition-colors"
-                placeholder="e.g., Living Room"
-              />
+              {errors.firmware && <p className="text-red-500 text-sm mt-1">{errors.firmware}</p>}
             </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              Description
+              Open Ports
             </label>
-            <textarea
-              name="description"
-              value={formData.description}
-              onChange={handleChange}
-              rows={3}
-              className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded text-white font-mono focus:outline-none focus:border-cyan-500 transition-colors resize-none"
-              placeholder="Additional notes about this device..."
+            <input
+              type="text"
+              value={portsInput}
+              onChange={(e) => setPortsInput(e.target.value)}
+              className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded text-white font-mono focus:outline-none focus:border-cyan-500 transition-colors"
+              placeholder="80, 443, 8080 (comma-separated)"
             />
+            <p className="text-gray-500 text-xs mt-1">Enter port numbers separated by commas</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Services
+            </label>
+            <input
+              type="text"
+              value={servicesInput}
+              onChange={(e) => setServicesInput(e.target.value)}
+              className="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded text-white font-mono focus:outline-none focus:border-cyan-500 transition-colors"
+              placeholder="HTTP, HTTPS, API (comma-separated)"
+            />
+            <p className="text-gray-500 text-xs mt-1">Enter service names separated by commas</p>
           </div>
 
           <div className="flex gap-3 pt-4">
