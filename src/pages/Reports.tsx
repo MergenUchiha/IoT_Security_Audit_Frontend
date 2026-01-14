@@ -1,254 +1,392 @@
 import { useState, useEffect } from 'react';
-import { FileText, Download, Calendar, FileCheck, Shield } from 'lucide-react';
-import { reportsApi } from '../services/api';
-import { useTheme } from '../contexts/ThemeContext';
+import { FileText, Download, Eye, Filter, Calendar, RefreshCw, Trash2 } from 'lucide-react';
+import axios from 'axios';
 
 interface Report {
   id: string;
   title: string;
-  type: 'technical' | 'executive' | 'compliance';
+  type: 'audit' | 'vulnerability' | 'compliance' | 'summary';
+  deviceName?: string;
+  deviceId?: string;
   createdAt: string;
-  devices: number;
-  vulnerabilities: number;
-  status: 'draft' | 'final';
+  fileSize: string;
+  status: 'completed' | 'generating' | 'failed';
+  format: 'pdf' | 'csv' | 'json';
 }
 
-const Reports = () => {
-  const { t } = useTheme();
+export default function Reports() {
   const [reports, setReports] = useState<Report[]>([]);
-  const [generating, setGenerating] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [filteredReports, setFilteredReports] = useState<Report[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedType, setSelectedType] = useState<string>('all');
+  const [selectedFormat, setSelectedFormat] = useState<string>('all');
+  const [dateRange, setDateRange] = useState({ from: '', to: '' });
 
   useEffect(() => {
-    const fetchReports = async () => {
-      try {
-        const response = await reportsApi.getAll();
-        setReports(response.data);
-      } catch (error) {
-        console.error('Failed to fetch reports:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchReports();
   }, []);
 
-  const handleGenerateReport = async (type: 'technical' | 'executive' | 'compliance') => {
-    setGenerating(true);
-    setProgress(0);
+  useEffect(() => {
+    filterReports();
+  }, [reports, selectedType, selectedFormat, dateRange]);
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 90) {
-          clearInterval(interval);
-          return 90;
+  const fetchReports = async () => {
+    setIsLoading(true);
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const response = await axios.get(`${API_URL}/api/reports`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
-        return prev + 10;
       });
-    }, 200);
+      setReports(response.data || []);
+    } catch (error) {
+      console.error('Error fetching reports:', error);
+      // Mock data
+      setReports([
+        {
+          id: '1',
+          title: 'Security Audit Report - Smart Camera 01',
+          type: 'audit',
+          deviceName: 'Smart Camera 01',
+          deviceId: 'dev-001',
+          createdAt: new Date().toISOString(),
+          fileSize: '2.4 MB',
+          status: 'completed',
+          format: 'pdf'
+        },
+        {
+          id: '2',
+          title: 'Vulnerability Assessment Report',
+          type: 'vulnerability',
+          createdAt: new Date(Date.now() - 86400000).toISOString(),
+          fileSize: '1.8 MB',
+          status: 'completed',
+          format: 'pdf'
+        },
+        {
+          id: '3',
+          title: 'Monthly Compliance Report',
+          type: 'compliance',
+          createdAt: new Date(Date.now() - 172800000).toISOString(),
+          fileSize: '3.2 MB',
+          status: 'completed',
+          format: 'pdf'
+        }
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const filterReports = () => {
+    let filtered = [...reports];
+
+    if (selectedType !== 'all') {
+      filtered = filtered.filter(r => r.type === selectedType);
+    }
+
+    if (selectedFormat !== 'all') {
+      filtered = filtered.filter(r => r.format === selectedFormat);
+    }
+
+    if (dateRange.from) {
+      filtered = filtered.filter(r => new Date(r.createdAt) >= new Date(dateRange.from));
+    }
+
+    if (dateRange.to) {
+      filtered = filtered.filter(r => new Date(r.createdAt) <= new Date(dateRange.to));
+    }
+
+    setFilteredReports(filtered);
+  };
+
+  const handleDownloadReport = async (reportId: string, title: string, format: string) => {
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const response = await axios.get(`${API_URL}/api/reports/${reportId}/download`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        responseType: 'blob'
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${title.replace(/[^a-z0-9]/gi, '_')}.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      alert('Report downloaded successfully');
+    } catch (error) {
+      console.error('Error downloading report:', error);
+      alert('Failed to download report');
+    }
+  };
+
+  const handleViewReport = (reportId: string) => {
+    window.open(`/reports/${reportId}`, '_blank');
+  };
+
+  const handleDeleteReport = async (reportId: string) => {
+    if (!confirm('Are you sure you want to delete this report?')) {
+      return;
+    }
 
     try {
-      const response = await reportsApi.generate(type);
-      clearInterval(interval);
-      setProgress(100);
-      
-      setReports([response.data, ...reports]);
-      
-      setTimeout(() => {
-        setGenerating(false);
-        setProgress(0);
-      }, 1000);
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      await axios.delete(`${API_URL}/api/reports/${reportId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      setReports(prev => prev.filter(r => r.id !== reportId));
+      alert('Report deleted successfully');
     } catch (error) {
-      console.error('Failed to generate report:', error);
-      clearInterval(interval);
-      setGenerating(false);
-      setProgress(0);
+      console.error('Error deleting report:', error);
+      alert('Failed to delete report');
+    }
+  };
+
+  const handleGenerateReport = async (type: string) => {
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const response = await axios.post(`${API_URL}/api/reports/generate`, 
+        { type },
+        {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        }
+      );
+
+      if (response.data) {
+        alert('Report generation started. It will appear in the list once completed.');
+        fetchReports();
+      }
+    } catch (error) {
+      console.error('Error generating report:', error);
+      alert('Failed to start report generation');
     }
   };
 
   const getTypeColor = (type: string) => {
     switch (type) {
-      case 'technical':
-        return 'bg-cyan-500/20 accent-cyan border-cyan-500';
-      case 'executive':
-        return 'bg-purple-500/20 text-purple-400 border-purple-500';
-      case 'compliance':
-        return 'bg-green-500/20 accent-green border-green-500';
-      default:
-        return 'bg-gray-500/20 text-gray-400 border-gray-500';
+      case 'audit': return 'text-cyan-400 bg-cyan-500/10';
+      case 'vulnerability': return 'text-red-400 bg-red-500/10';
+      case 'compliance': return 'text-green-400 bg-green-500/10';
+      case 'summary': return 'text-purple-400 bg-purple-500/10';
+      default: return 'text-gray-400 bg-gray-500/10';
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'text-green-400';
+      case 'generating': return 'text-yellow-400';
+      case 'failed': return 'text-red-400';
+      default: return 'text-gray-400';
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-primary font-mono flex items-center gap-3">
-          <FileText className="w-8 h-8 accent-cyan" />
-          {t.reports.title}
-        </h1>
-        <button
-          onClick={() => handleGenerateReport('technical')}
-          disabled={generating}
-          className="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-mono font-bold flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <FileCheck className="w-5 h-5" />
-          {generating ? t.reports.generating : t.reports.generateNew}
-        </button>
+        <div>
+          <h1 className="text-3xl font-bold text-white font-mono flex items-center gap-3">
+            <FileText className="w-8 h-8 text-cyan-500" />
+            Reports
+          </h1>
+          <p className="text-gray-400 mt-2">View and download security reports</p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={fetchReports}
+            disabled={isLoading}
+            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-mono transition-all flex items-center gap-2 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+          <div className="relative group">
+            <button className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded font-mono transition-all flex items-center gap-2">
+              <Download className="w-4 h-4" />
+              Generate Report
+            </button>
+            <div className="absolute right-0 mt-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+              <button
+                onClick={() => handleGenerateReport('audit')}
+                className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 rounded-t-lg transition-colors"
+              >
+                Audit Report
+              </button>
+              <button
+                onClick={() => handleGenerateReport('vulnerability')}
+                className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors"
+              >
+                Vulnerability Report
+              </button>
+              <button
+                onClick={() => handleGenerateReport('compliance')}
+                className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 transition-colors"
+              >
+                Compliance Report
+              </button>
+              <button
+                onClick={() => handleGenerateReport('summary')}
+                className="w-full px-4 py-2 text-left text-white hover:bg-gray-700 rounded-b-lg transition-colors"
+              >
+                Summary Report
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Generation Progress */}
-      {generating && (
-        <div className="bg-primary border border-cyan-500 rounded-lg p-6">
-          <div className="flex items-center justify-between mb-3">
-            <span className="accent-cyan font-mono font-bold">{t.reports.generatingReport}</span>
-            <span className="text-primary font-mono">{progress}%</span>
-          </div>
-          <div className="w-full bg-tertiary rounded-full h-3 overflow-hidden">
-            <div
-              className="bg-gradient-to-r from-cyan-500 to-green-500 h-full transition-all duration-100 relative"
-              style={{ width: `${progress}%` }}
+      {/* Filters */}
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+        <div className="flex flex-wrap gap-4 items-center">
+          <div className="flex items-center gap-2">
+            <Filter className="w-5 h-5 text-gray-400" />
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value)}
+              className="px-4 py-2 bg-gray-900 border border-gray-700 rounded text-white font-mono focus:outline-none focus:border-cyan-500 transition-colors"
             >
-              <div className="absolute inset-0 bg-white/30 animate-pulse"></div>
-            </div>
+              <option value="all">All Types</option>
+              <option value="audit">Audit</option>
+              <option value="vulnerability">Vulnerability</option>
+              <option value="compliance">Compliance</option>
+              <option value="summary">Summary</option>
+            </select>
           </div>
-          <div className="mt-3 space-y-1 text-sm font-mono text-tertiary">
-            <p>{t.reports.analyzingDevices}</p>
-            <p>{t.reports.compilingData}</p>
-            <p>{t.reports.generatingRecommendations}</p>
-            <p>{t.reports.creatingVisualizations}</p>
-          </div>
-        </div>
-      )}
 
-      {/* Report Templates */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-primary border border-primary rounded-lg p-6 hover:border-cyan-400 transition-all">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-3 bg-cyan-500/20 rounded-lg">
-              <FileText className="w-6 h-6 accent-cyan" />
-            </div>
-            <div>
-              <h3 className="text-primary font-bold font-mono">{t.reports.technical}</h3>
-              <p className="text-tertiary text-sm">{t.reports.technicalDesc}</p>
-            </div>
-          </div>
-          <p className="text-tertiary text-sm mb-4">
-            {t.reports.technicalFull}
-          </p>
-          <button 
-            onClick={() => handleGenerateReport('technical')}
-            disabled={generating}
-            className="w-full px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-mono font-bold transition-all disabled:opacity-50"
+          <select
+            value={selectedFormat}
+            onChange={(e) => setSelectedFormat(e.target.value)}
+            className="px-4 py-2 bg-gray-900 border border-gray-700 rounded text-white font-mono focus:outline-none focus:border-cyan-500 transition-colors"
           >
-            {t.reports.create}
-          </button>
-        </div>
+            <option value="all">All Formats</option>
+            <option value="pdf">PDF</option>
+            <option value="csv">CSV</option>
+            <option value="json">JSON</option>
+          </select>
 
-        <div className="bg-primary border border-purple-500/30 rounded-lg p-6 hover:border-purple-400 transition-all">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-3 bg-purple-500/20 rounded-lg">
-              <FileCheck className="w-6 h-6 text-purple-400" />
-            </div>
-            <div>
-              <h3 className="text-primary font-bold font-mono">{t.reports.executive}</h3>
-              <p className="text-tertiary text-sm">{t.reports.executiveDesc}</p>
-            </div>
+          <div className="flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-gray-400" />
+            <input
+              type="date"
+              value={dateRange.from}
+              onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value }))}
+              className="px-4 py-2 bg-gray-900 border border-gray-700 rounded text-white font-mono focus:outline-none focus:border-cyan-500 transition-colors"
+            />
+            <span className="text-gray-400">to</span>
+            <input
+              type="date"
+              value={dateRange.to}
+              onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value }))}
+              className="px-4 py-2 bg-gray-900 border border-gray-700 rounded text-white font-mono focus:outline-none focus:border-cyan-500 transition-colors"
+            />
           </div>
-          <p className="text-tertiary text-sm mb-4">
-            {t.reports.executiveFull}
-          </p>
-          <button 
-            onClick={() => handleGenerateReport('executive')}
-            disabled={generating}
-            className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded font-mono font-bold transition-all disabled:opacity-50"
-          >
-            {t.reports.create}
-          </button>
-        </div>
 
-        <div className="bg-primary border border-green-500/30 rounded-lg p-6 hover:border-green-400 transition-all">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-3 bg-green-500/20 rounded-lg">
-              <Shield className="w-6 h-6 accent-green" />
-            </div>
-            <div>
-              <h3 className="text-primary font-bold font-mono">{t.reports.compliance}</h3>
-              <p className="text-tertiary text-sm">{t.reports.complianceDesc}</p>
-            </div>
-          </div>
-          <p className="text-tertiary text-sm mb-4">
-            {t.reports.complianceFull}
-          </p>
-          <button 
-            onClick={() => handleGenerateReport('compliance')}
-            disabled={generating}
-            className="w-full px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded font-mono font-bold transition-all disabled:opacity-50"
-          >
-            {t.reports.create}
-          </button>
+          {(dateRange.from || dateRange.to) && (
+            <button
+              onClick={() => setDateRange({ from: '', to: '' })}
+              className="text-cyan-400 hover:text-cyan-300 text-sm underline"
+            >
+              Clear dates
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Generated Reports List */}
-      <div className="bg-primary border border-primary rounded-lg p-6">
-        <h3 className="text-lg font-bold text-primary mb-4 font-mono">{t.reports.generated}</h3>
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="accent-cyan font-mono">{t.reports.loadingReports}</div>
+      {/* Reports List */}
+      <div className="space-y-3">
+        {isLoading ? (
+          <div className="text-center py-12">
+            <div className="inline-block w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-gray-400 mt-4">Loading reports...</p>
+          </div>
+        ) : filteredReports.length === 0 ? (
+          <div className="bg-gray-800 border border-gray-700 rounded-lg p-12 text-center">
+            <FileText className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+            <p className="text-gray-400">No reports found</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {reports.map((report) => (
-              <div
-                key={report.id}
-                className="bg-secondary border border-secondary rounded-lg p-4 hover:border-cyan-500/50 transition-all"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="accent-cyan font-mono text-sm font-bold">{report.id}</span>
-                      <span className={`px-2 py-1 rounded text-xs font-mono font-bold border ${getTypeColor(report.type)}`}>
-                        {report.type.toUpperCase()}
-                      </span>
-                      <span className={`px-2 py-1 rounded text-xs font-mono font-bold ${
-                        report.status === 'final'
-                          ? 'bg-green-500/20 accent-green border border-green-500'
-                          : 'bg-yellow-500/20 accent-yellow border border-yellow-500'
-                      }`}>
-                        {t.reports.status[report.status]}
-                      </span>
-                    </div>
-                    <h4 className="text-primary font-medium mb-2">{report.title}</h4>
-                    <div className="flex items-center gap-4 text-sm text-tertiary font-mono">
-                      <div className="flex items-center gap-1">
-                        <Calendar className="w-4 h-4" />
-                        {new Date(report.createdAt).toLocaleDateString()}
-                      </div>
-                      <span>•</span>
-                      <span>{report.devices} {t.reports.devices}</span>
-                      <span>•</span>
-                      <span>{report.vulnerabilities} vulnerabilities</span>
-                    </div>
+          filteredReports.map(report => (
+            <div
+              key={report.id}
+              className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-cyan-500 transition-all"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className={`px-3 py-1 rounded text-xs font-bold uppercase ${getTypeColor(report.type)}`}>
+                      {report.type}
+                    </span>
+                    <span className={`text-xs font-bold uppercase ${getStatusColor(report.status)}`}>
+                      {report.status}
+                    </span>
+                    <span className="text-gray-400 text-xs uppercase">{report.format}</span>
                   </div>
-                  <div className="flex gap-2">
-                    <button className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-mono text-sm transition-all flex items-center gap-2">
-                      <Download className="w-4 h-4" />
-                      {t.reports.pdf}
-                    </button>
-                    <button className="px-4 py-2 bg-tertiary hover:bg-secondary text-primary rounded font-mono text-sm transition-all border border-primary">
-                      {t.reports.view}
-                    </button>
+
+                  <h3 className="text-lg font-bold text-white mb-1">{report.title}</h3>
+                  {report.deviceName && (
+                    <p className="text-gray-400 text-sm mb-2">Device: {report.deviceName}</p>
+                  )}
+                  <div className="flex items-center gap-4 text-sm text-gray-500">
+                    <span>Created: {new Date(report.createdAt).toLocaleString()}</span>
+                    <span>Size: {report.fileSize}</span>
                   </div>
                 </div>
+
+                <div className="flex gap-2 ml-4">
+                  {report.status === 'completed' && (
+                    <>
+                      <button
+                        onClick={() => handleDownloadReport(report.id, report.title, report.format)}
+                        className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-mono text-sm transition-all flex items-center gap-2"
+                      >
+                        <Download className="w-4 h-4" />
+                        Download
+                      </button>
+                      <button
+                        onClick={() => handleViewReport(report.id)}
+                        className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-cyan-400 rounded font-mono text-sm transition-all border border-cyan-400 flex items-center gap-2"
+                      >
+                        <Eye className="w-4 h-4" />
+                        View
+                      </button>
+                      <button
+                        onClick={() => handleDeleteReport(report.id)}
+                        className="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded font-mono text-sm transition-all border border-red-400/50 flex items-center gap-2"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                  {report.status === 'generating' && (
+                    <div className="px-4 py-2 bg-yellow-600/20 text-yellow-400 rounded font-mono text-sm flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+                      Generating...
+                    </div>
+                  )}
+                  {report.status === 'failed' && (
+                    <div className="px-4 py-2 bg-red-600/20 text-red-400 rounded font-mono text-sm">
+                      Failed
+                    </div>
+                  )}
+                </div>
               </div>
-            ))}
-          </div>
+            </div>
+          ))
         )}
       </div>
     </div>
   );
-};
-
-export default Reports;
+}

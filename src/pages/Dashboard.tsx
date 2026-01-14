@@ -1,6 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, memo } from 'react';
+import { Shield, Activity, AlertTriangle, Wifi } from 'lucide-react';
 import { analyticsApi, handleApiError } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { useTheme } from '../contexts/ThemeContext';
+import StatsCard from '../components/Dashboard/StatsCard';
+import VulnerabilityTrends from '../components/Dashboard/VulnerabilityTrends';
+import NetworkTraffic from '../components/Dashboard/NetworkTraffic';
+import RiskDistribution from '../components/Dashboard/RiskDistribution';
+import ComplianceScore from '../components/Dashboard/ComplianceScore';
+import RecentAlerts from '../components/Dashboard/RecentAlerts';
+import ActivityFeed from '../components/Dashboard/ActivityFeed';
 
 interface DashboardMetrics {
   devicesOnline: number;
@@ -10,13 +19,22 @@ interface DashboardMetrics {
   metrics?: any;
 }
 
+// Memoize components to prevent unnecessary re-renders
+const MemoizedStatsCard = memo(StatsCard);
+const MemoizedVulnerabilityTrends = memo(VulnerabilityTrends);
+const MemoizedNetworkTraffic = memo(NetworkTraffic);
+const MemoizedRiskDistribution = memo(RiskDistribution);
+const MemoizedComplianceScore = memo(ComplianceScore);
+const MemoizedRecentAlerts = memo(RecentAlerts);
+const MemoizedActivityFeed = memo(ActivityFeed);
+
 export default function Dashboard() {
+  const { t } = useTheme();
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { isConnected, on, off } = useWebSocket();
 
-  // Fetch dashboard data
   const fetchDashboard = useCallback(async () => {
     try {
       setError(null);
@@ -24,14 +42,14 @@ export default function Dashboard() {
       setMetrics(response.data);
     } catch (err: any) {
       const errorMessage = handleApiError(err);
-      console.error('Failed to fetch dashboard data:', err);
+      console.error('Error fetching dashboard data:', err);
       setError(errorMessage);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Initial fetch
+  // Initial fetch only
   useEffect(() => {
     fetchDashboard();
   }, [fetchDashboard]);
@@ -41,46 +59,24 @@ export default function Dashboard() {
     if (!isConnected) return;
 
     const handleAnalyticsUpdate = (data: any) => {
-      console.log('📊 Analytics update received:', data);
-      setMetrics((prev) => ({
-        ...prev,
-        ...data,
-      }));
-    };
-
-    const handleDeviceUpdate = () => {
-      // Refetch on device changes
-      fetchDashboard();
+      setMetrics((prev) => prev ? { ...prev, ...data } : null);
     };
 
     on('analyticsUpdate', handleAnalyticsUpdate);
-    on('deviceUpdate', handleDeviceUpdate);
-    on('deviceStatusUpdate', handleDeviceUpdate);
+    on('dashboardMetrics', handleAnalyticsUpdate);
 
     return () => {
       off('analyticsUpdate', handleAnalyticsUpdate);
-      off('deviceUpdate', handleDeviceUpdate);
-      off('deviceStatusUpdate', handleDeviceUpdate);
+      off('dashboardMetrics', handleAnalyticsUpdate);
     };
-  }, [isConnected, on, off, fetchDashboard]);
-
-  // Auto-refresh every 30 seconds (instead of continuous polling)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!loading) {
-        fetchDashboard();
-      }
-    }, 30000); // 30 seconds
-
-    return () => clearInterval(interval);
-  }, [fetchDashboard, loading]);
+  }, [isConnected, on, off]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center py-20">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyber-primary mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading dashboard...</p>
+          <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="accent-cyan font-mono">{t.dashboard.loadingData}</p>
         </div>
       </div>
     );
@@ -88,99 +84,84 @@ export default function Dashboard() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center py-20">
         <div className="text-center max-w-md">
           <div className="text-red-500 text-6xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold text-white mb-2">Connection Error</h2>
-          <p className="text-gray-400 mb-4">{error}</p>
+          <h2 className="text-2xl font-bold text-primary mb-2">{t.common.error}</h2>
+          <p className="text-tertiary mb-4">{error}</p>
           <button
             onClick={fetchDashboard}
-            className="px-6 py-2 bg-cyber-primary text-white rounded-lg hover:bg-opacity-80 transition"
+            className="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition font-mono"
           >
             Retry
           </button>
-          <div className="mt-6 text-sm text-gray-500">
-            <p>Make sure backend is running on:</p>
-            <code className="bg-gray-800 px-2 py-1 rounded">http://localhost:3001</code>
-          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-white">Dashboard</h1>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-primary font-mono flex items-center gap-3">
+            <Shield className="w-8 h-8 accent-cyan" />
+            {t.dashboard.title}
+          </h1>
+          <p className="text-tertiary text-sm mt-1 font-mono">{t.dashboard.subtitle}</p>
+        </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <span
-              className={`w-2 h-2 rounded-full ${
-                isConnected ? 'bg-green-500' : 'bg-red-500'
-              }`}
-            ></span>
-            <span className="text-sm text-gray-400">
-              {isConnected ? 'Connected' : 'Disconnected'}
+            <Wifi className={`w-5 h-5 ${isConnected ? 'accent-green' : 'accent-red'}`} />
+            <span className={`text-sm font-mono ${isConnected ? 'accent-green' : 'accent-red'}`}>
+              {isConnected ? t.common.connected : t.common.disconnected}
             </span>
           </div>
-          <button
-            onClick={fetchDashboard}
-            disabled={loading}
-            className="px-4 py-2 bg-cyber-primary text-white rounded-lg hover:bg-opacity-80 transition disabled:opacity-50"
-          >
-            {loading ? 'Refreshing...' : 'Refresh'}
-          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="bg-cyber-dark border border-gray-700 rounded-lg p-6">
-          <h3 className="text-gray-400 text-sm font-medium mb-2">Total Devices</h3>
-          <p className="text-3xl font-bold text-white">{metrics?.totalDevices || 0}</p>
-        </div>
-
-        <div className="bg-cyber-dark border border-gray-700 rounded-lg p-6">
-          <h3 className="text-gray-400 text-sm font-medium mb-2">Devices Online</h3>
-          <p className="text-3xl font-bold text-green-500">{metrics?.devicesOnline || 0}</p>
-        </div>
-
-        <div className="bg-cyber-dark border border-gray-700 rounded-lg p-6">
-          <h3 className="text-gray-400 text-sm font-medium mb-2">Total Vulnerabilities</h3>
-          <p className="text-3xl font-bold text-yellow-500">
-            {metrics?.totalVulnerabilities || 0}
-          </p>
-        </div>
-
-        <div className="bg-cyber-dark border border-gray-700 rounded-lg p-6">
-          <h3 className="text-gray-400 text-sm font-medium mb-2">Critical Issues</h3>
-          <p className="text-3xl font-bold text-red-500">{metrics?.criticalIssues || 0}</p>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <MemoizedStatsCard
+          icon={Wifi}
+          label={t.dashboard.devicesOnline}
+          value={`${metrics?.devicesOnline || 0}/${metrics?.totalDevices || 0}`}
+          color="from-cyan-600 to-cyan-500"
+        />
+        <MemoizedStatsCard
+          icon={Shield}
+          label={t.dashboard.totalVulnerabilities}
+          value={metrics?.totalVulnerabilities || 0}
+          trend={12}
+          color="from-orange-600 to-orange-500"
+        />
+        <MemoizedStatsCard
+          icon={AlertTriangle}
+          label={t.dashboard.criticalIssues}
+          value={metrics?.criticalIssues || 0}
+          trend={5}
+          color="from-red-600 to-red-500"
+        />
+        <MemoizedStatsCard
+          icon={Activity}
+          label={t.dashboard.activeScans}
+          value={0}
+          color="from-green-600 to-green-500"
+        />
       </div>
 
-      <div className="bg-cyber-dark border border-gray-700 rounded-lg p-6">
-        <h2 className="text-xl font-bold text-white mb-4">System Status</h2>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-gray-400">Backend Connection</span>
-            <span className="text-green-500 font-medium">✓ Connected</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-gray-400">WebSocket</span>
-            <span
-              className={`font-medium ${
-                isConnected ? 'text-green-500' : 'text-red-500'
-              }`}
-            >
-              {isConnected ? '✓ Connected' : '✗ Disconnected'}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-gray-400">Last Updated</span>
-            <span className="text-gray-400 text-sm">
-              {new Date().toLocaleTimeString()}
-            </span>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <MemoizedVulnerabilityTrends />
+        <MemoizedNetworkTraffic />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <MemoizedRiskDistribution />
+        <MemoizedComplianceScore />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <MemoizedRecentAlerts />
+        <MemoizedActivityFeed />
       </div>
     </div>
   );

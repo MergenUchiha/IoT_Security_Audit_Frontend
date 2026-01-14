@@ -5,6 +5,22 @@ export type ScanStatus = 'completed' | 'running' | 'pending' | 'failed';
 export type ActivityType = 'scan' | 'alert' | 'update' | 'info';
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
 
+export interface DashboardStats {
+  totalDevices: number;
+  onlineDevices: number;
+  criticalVulnerabilities: number;
+  activeScans: number;
+  riskTrend: Array<{ date: string; score: number }>;
+  devicesByType: Array<{ type: string; count: number }>;
+  recentActivity: Array<{
+    id: string;
+    type: 'scan' | 'vulnerability' | 'device';
+    message: string;
+    timestamp: string;
+    severity?: 'low' | 'medium' | 'high' | 'critical';
+  }>;
+}
+
 export interface Device {
   id: number;
   name: string;
@@ -50,6 +66,7 @@ export interface ScanPhase {
   status: ScanStatus;
   time: string;
   details: string;
+  phaseCode?: string;
 }
 
 export interface NetworkTraffic {

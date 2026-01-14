@@ -14,4 +14,19 @@ export default defineConfig({
     host: true,
     strictPort: false,
   },
+  build: {
+    sourcemap: false, // Disable source maps in production
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          charts: ['recharts'],
+          icons: ['lucide-react'],
+        },
+      },
+    },
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router-dom', 'recharts', 'lucide-react', 'axios'],
+  },
 })

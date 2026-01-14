@@ -1,13 +1,15 @@
-import { Eye, Cpu, Lock, Network, HardDrive, AlertTriangle } from 'lucide-react';
+import { Eye, Cpu, Lock, Network, HardDrive, AlertTriangle, Activity } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { Device } from '../../types';
 
 interface DeviceCardProps {
   device: Device;
   onClick: (device: Device) => void;
+  onStartAudit?: (device: Device) => void;
+  isAuditing?: boolean;
 }
 
-const DeviceCard = ({ device, onClick }: DeviceCardProps) => {
+const DeviceCard = ({ device, onClick, onStartAudit, isAuditing }: DeviceCardProps) => {
   const { t } = useTheme();
 
   const getIcon = (type: string) => {
@@ -53,11 +55,27 @@ const DeviceCard = ({ device, onClick }: DeviceCardProps) => {
     }
   };
 
+  const handleAuditClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onStartAudit && !isAuditing) {
+      onStartAudit(device);
+    }
+  };
+
   return (
     <div 
-      className="bg-primary border border-primary rounded-lg p-6 card cursor-pointer"
+      className={`bg-primary border rounded-lg p-6 card cursor-pointer transition-all ${
+        isAuditing ? 'border-cyan-500 shadow-lg shadow-cyan-500/50 animate-pulse' : 'border-primary'
+      }`}
       onClick={() => onClick(device)}
     >
+      {isAuditing && (
+        <div className="mb-3 flex items-center gap-2 bg-cyan-500/20 border border-cyan-500 rounded px-3 py-2">
+          <Activity className="w-4 h-4 accent-cyan animate-pulse" />
+          <span className="text-xs accent-cyan font-mono font-bold">AUDIT IN PROGRESS</span>
+        </div>
+      )}
+
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className={`p-2 rounded-lg ${getIconBgColor(device.type)}`}>
@@ -97,11 +115,28 @@ const DeviceCard = ({ device, onClick }: DeviceCardProps) => {
             {t.risk[device.risk]}
           </span>
         </div>
-        <span className="text-tertiary text-sm font-mono">{device.vulnerabilities} {t.devices.vulnerabilities}</span>
+        <span className="text-tertiary text-sm font-mono">
+          {device.vulnerabilities} {t.devices.vulnerabilities}
+        </span>
       </div>
 
-      <button className="w-full mt-4 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-mono font-bold transition-all">
-        {t.devices.startAudit}
+      <button 
+        onClick={handleAuditClick}
+        disabled={isAuditing}
+        className={`w-full mt-4 px-4 py-2 text-white rounded font-mono font-bold transition-all transform hover:scale-105 active:scale-95 ${
+          isAuditing 
+            ? 'bg-cyan-700 cursor-not-allowed opacity-75' 
+            : 'bg-cyan-600 hover:bg-cyan-500'
+        }`}
+      >
+        {isAuditing ? (
+          <span className="flex items-center justify-center gap-2">
+            <Activity className="w-4 h-4 animate-spin" />
+            AUDITING...
+          </span>
+        ) : (
+          t.devices.startAudit
+        )}
       </button>
     </div>
   );

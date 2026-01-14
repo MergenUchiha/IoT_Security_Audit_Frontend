@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Eye } from 'lucide-react';
 import { vulnerabilitiesApi } from '../../services/api';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { Vulnerability } from '../../types';
@@ -27,6 +27,38 @@ const RecentAlerts = () => {
     fetchVulnerabilities();
   }, []);
 
+  const handleInvestigate = (vuln: Vulnerability) => {
+    console.log('Investigating vulnerability:', vuln.id);
+    
+    // Create detailed investigation report
+    const report = `
+VULNERABILITY INVESTIGATION REPORT
+==================================
+
+CVE ID: ${vuln.id}
+Title: ${vuln.title}
+Severity: ${vuln.severity.toUpperCase()}
+CVSS Score: ${vuln.cvss}
+
+DESCRIPTION:
+${vuln.description}
+
+IMPACT:
+${vuln.impact}
+
+RECOMMENDED ACTION:
+${vuln.solution}
+
+AFFECTED DEVICES:
+${vuln.deviceVulns?.map(dv => `- ${dv.device?.name || 'Unknown'}`).join('\n') || 'No devices linked'}
+
+DISCOVERED: ${vuln.discovered}
+STATUS: ${vuln.status || vuln.deviceVulns?.[0]?.status || 'Unknown'}
+    `.trim();
+
+    alert(report);
+  };
+
   if (loading) {
     return (
       <div className="bg-primary border border-primary rounded-lg p-6">
@@ -51,7 +83,7 @@ const RecentAlerts = () => {
         {vulnerabilities.map((vuln: any) => (
           <div 
             key={vuln.id} 
-            className="bg-secondary border border-red-500/30 rounded p-4 hover:border-red-400 transition-all"
+            className="bg-secondary border border-red-500/30 rounded p-4 hover:border-red-400 transition-all group"
           >
             <div className="flex items-start justify-between">
               <div className="flex-1">
@@ -69,9 +101,15 @@ const RecentAlerts = () => {
                   <span className="accent-cyan font-mono text-xs">{t.vulnerabilities.cvss}: {vuln.cvss}</span>
                 </div>
                 <p className="text-primary font-medium mt-2">{vuln.title}</p>
-                <p className="text-tertiary text-sm mt-1 font-mono">{t.vulnerabilities.device}: {vuln.device}</p>
+                <p className="text-tertiary text-sm mt-1 font-mono">
+                  {t.vulnerabilities.device}: {vuln.deviceVulns?.[0]?.device?.name || 'Multiple devices'}
+                </p>
               </div>
-              <button className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-mono text-sm transition-all">
+              <button 
+                onClick={() => handleInvestigate(vuln)}
+                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-mono text-sm transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2 opacity-0 group-hover:opacity-100"
+              >
+                <Eye className="w-4 h-4" />
                 {t.dashboard.investigate}
               </button>
             </div>
