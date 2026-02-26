@@ -1,168 +1,247 @@
-import { useState, useEffect, useCallback, memo } from 'react';
-import { Shield, Activity, AlertTriangle, Wifi } from 'lucide-react';
-import { analyticsApi, handleApiError } from '../services/api';
-import { useWebSocket } from '../hooks/useWebSocket';
-import { useTheme } from '../contexts/ThemeContext';
-import StatsCard from '../components/Dashboard/StatsCard';
-import VulnerabilityTrends from '../components/Dashboard/VulnerabilityTrends';
-import NetworkTraffic from '../components/Dashboard/NetworkTraffic';
-import RiskDistribution from '../components/Dashboard/RiskDistribution';
-import ComplianceScore from '../components/Dashboard/ComplianceScore';
-import RecentAlerts from '../components/Dashboard/RecentAlerts';
-import ActivityFeed from '../components/Dashboard/ActivityFeed';
+import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend,
+} from 'recharts'
+import { devicesApi, alertsApi, summaryApi } from '../api'
+import { useLang } from '../stores'
+import { PageHeader } from '../components/layout'
+import {
+  StatCard, Card, CardHeader, CardTitle, CardBody,
+  SeverityBadge, StatusBadge, EmptyState, Spinner,
+} from '../components/ui'
+import type { Device, Alert, DeviceSummary } from '../types'
+import { format } from 'date-fns'
 
-interface DashboardMetrics {
-  devicesOnline: number;
-  totalDevices: number;
-  totalVulnerabilities: number;
-  criticalIssues: number;
-  metrics?: any;
+const SEVERITY_COLORS: Record<string, string> = {
+  CRITICAL: '#EF4444',
+  HIGH: '#F97316',
+  MEDIUM: '#EAB308',
+  LOW: '#22C55E',
+  INFO: '#3B82F6',
 }
 
-// Memoize components to prevent unnecessary re-renders
-const MemoizedStatsCard = memo(StatsCard);
-const MemoizedVulnerabilityTrends = memo(VulnerabilityTrends);
-const MemoizedNetworkTraffic = memo(NetworkTraffic);
-const MemoizedRiskDistribution = memo(RiskDistribution);
-const MemoizedComplianceScore = memo(ComplianceScore);
-const MemoizedRecentAlerts = memo(RecentAlerts);
-const MemoizedActivityFeed = memo(ActivityFeed);
+export default function DashboardPage() {
+  const { t } = useLang()
+  const navigate = useNavigate()
 
-export default function Dashboard() {
-  const { t } = useTheme();
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { isConnected, on, off } = useWebSocket();
+  const [devices, setDevices] = useState<Device[]>([])
+  const [summaries, setSummaries] = useState<DeviceSummary[]>([])
+  const [allAlerts, setAllAlerts] = useState<Alert[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const fetchDashboard = useCallback(async () => {
-    try {
-      setError(null);
-      const response = await analyticsApi.getDashboard();
-      setMetrics(response.data);
-    } catch (err: any) {
-      const errorMessage = handleApiError(err);
-      console.error('Error fetching dashboard data:', err);
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    async function load() {
+      try {
+        const devs = await devicesApi.list()
+        setDevices(devs)
+
+        const sumPromises = devs.slice(0, 10).map(d => summaryApi.get(d.id).catch(() => null))
+        const sums = (await Promise.all(sumPromises)).filter(Boolean) as DeviceSummary[]
+        setSummaries(sums)
+
+        const alertPromises = devs.slice(0, 5).map(d => alertsApi.list(d.id, { limit: 10 }).catch(() => []))
+        const alerts = (await Promise.all(alertPromises)).flat()
+        alerts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        setAllAlerts(alerts.slice(0, 15))
+      } finally {
+        setLoading(false)
+      }
     }
-  }, []);
+    load()
+  }, [])
 
-  // Initial fetch only
-  useEffect(() => {
-    fetchDashboard();
-  }, [fetchDashboard]);
+  const activeDevices = devices.filter(d => d.isActive).length
+  const totalUnacked = summaries.reduce((s, sum) => s + sum.alerts.unacked, 0)
+  const totalAlerts = summaries.reduce((s, sum) => s + sum.alerts.total, 0)
 
-  // WebSocket real-time updates
-  useEffect(() => {
-    if (!isConnected) return;
+  // Severity distribution for findings
+  const findingsBySeverity = summaries.reduce((acc, sum) => {
+    const f = sum.lastAudit?.summary?.findings
+    if (!f) return acc
+    acc.CRITICAL = (acc.CRITICAL || 0) + f.critical
+    acc.HIGH = (acc.HIGH || 0) + f.high
+    acc.MEDIUM = (acc.MEDIUM || 0) + f.medium
+    acc.LOW = (acc.LOW || 0) + f.low
+    acc.INFO = (acc.INFO || 0) + f.info
+    return acc
+  }, {} as Record<string, number>)
 
-    const handleAnalyticsUpdate = (data: any) => {
-      setMetrics((prev) => prev ? { ...prev, ...data } : null);
-    };
+  const pieData = Object.entries(findingsBySeverity)
+    .filter(([, v]) => v > 0)
+    .map(([name, value]) => ({ name, value }))
 
-    on('analyticsUpdate', handleAnalyticsUpdate);
-    on('dashboardMetrics', handleAnalyticsUpdate);
-
-    return () => {
-      off('analyticsUpdate', handleAnalyticsUpdate);
-      off('dashboardMetrics', handleAnalyticsUpdate);
-    };
-  }, [isConnected, on, off]);
+  // Device type distribution
+  const typeData = devices.reduce((acc, d) => {
+    const k = d.type
+    acc[k] = (acc[k] || 0) + 1
+    return acc
+  }, {} as Record<string, number>)
+  const barData = Object.entries(typeData).map(([type, count]) => ({ type: t(type as any), count }))
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="accent-cyan font-mono">{t.dashboard.loadingData}</p>
-        </div>
+      <div className="flex items-center justify-center h-64">
+        <Spinner size="lg" />
       </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="text-center max-w-md">
-          <div className="text-red-500 text-6xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold text-primary mb-2">{t.common.error}</h2>
-          <p className="text-tertiary mb-4">{error}</p>
-          <button
-            onClick={fetchDashboard}
-            className="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition font-mono"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
+    )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-primary font-mono flex items-center gap-3">
-            <Shield className="w-8 h-8 accent-cyan" />
-            {t.dashboard.title}
-          </h1>
-          <p className="text-tertiary text-sm mt-1 font-mono">{t.dashboard.subtitle}</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Wifi className={`w-5 h-5 ${isConnected ? 'accent-green' : 'accent-red'}`} />
-            <span className={`text-sm font-mono ${isConnected ? 'accent-green' : 'accent-red'}`}>
-              {isConnected ? t.common.connected : t.common.disconnected}
-            </span>
-          </div>
-        </div>
-      </div>
+    <div className="animate-fade-in space-y-6">
+      <PageHeader title={t('dashboard')} sub="IoT Security Audit Platform" />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <MemoizedStatsCard
-          icon={Wifi}
-          label={t.dashboard.devicesOnline}
-          value={`${metrics?.devicesOnline || 0}/${metrics?.totalDevices || 0}`}
-          color="from-cyan-600 to-cyan-500"
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          label={t('totalDevices')}
+          value={devices.length}
+          sub={`${activeDevices} ${t('active')}`}
+          icon={<span className="text-2xl">◉</span>}
+          accent="bg-cyan-500"
         />
-        <MemoizedStatsCard
-          icon={Shield}
-          label={t.dashboard.totalVulnerabilities}
-          value={metrics?.totalVulnerabilities || 0}
-          trend={12}
-          color="from-orange-600 to-orange-500"
+        <StatCard
+          label={t('totalAlerts')}
+          value={totalAlerts}
+          sub={`${totalUnacked} ${t('unackedAlerts')}`}
+          icon={<span className="text-2xl">◎</span>}
+          accent="bg-orange-500"
         />
-        <MemoizedStatsCard
-          icon={AlertTriangle}
-          label={t.dashboard.criticalIssues}
-          value={metrics?.criticalIssues || 0}
-          trend={5}
-          color="from-red-600 to-red-500"
+        <StatCard
+          label={t('criticalFindings')}
+          value={findingsBySeverity.CRITICAL ?? 0}
+          sub="Nmap + Nuclei"
+          icon={<span className="text-2xl">⚠</span>}
+          accent="bg-red-500"
         />
-        <MemoizedStatsCard
-          icon={Activity}
-          label={t.dashboard.activeScans}
-          value={0}
-          color="from-green-600 to-green-500"
+        <StatCard
+          label={t('unackedAlerts')}
+          value={totalUnacked}
+          sub={totalUnacked > 0 ? '⚡ Требует внимания' : '✓ Всё в порядке'}
+          icon={<span className="text-2xl">🔔</span>}
+          accent={totalUnacked > 0 ? 'bg-yellow-500' : 'bg-green-500'}
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <MemoizedVulnerabilityTrends />
-        <MemoizedNetworkTraffic />
+      {/* Charts row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Findings pie */}
+        <Card glow>
+          <CardHeader><CardTitle>{t('securityPosture')}</CardTitle></CardHeader>
+          <CardBody>
+            {pieData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
+                    {pieData.map((entry) => (
+                      <Cell key={entry.name} fill={SEVERITY_COLORS[entry.name]} />
+                    ))}
+                  </Pie>
+                  <Legend formatter={(v) => <span className="t-text-secondary text-xs font-mono">{t(v as any)}</span>} />
+                  <Tooltip
+                    contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8 }}
+                    labelStyle={{ color: '#e2e8f0' }}
+                    itemStyle={{ color: '#94a3b8' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyState icon="🔍" message={t('noFindings')} />
+            )}
+          </CardBody>
+        </Card>
+
+        {/* Device types bar */}
+        <Card>
+          <CardHeader><CardTitle>{t('deviceOverview')}</CardTitle></CardHeader>
+          <CardBody>
+            {barData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={barData} margin={{ top: 5, right: 5, left: -30, bottom: 5 }}>
+                  <XAxis dataKey="type" tick={{ fill: '#64748b', fontSize: 11, fontFamily: 'JetBrains Mono' }} />
+                  <YAxis tick={{ fill: '#64748b', fontSize: 11 }} />
+                  <Tooltip
+                    contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8 }}
+                    labelStyle={{ color: '#e2e8f0' }}
+                    itemStyle={{ color: '#94a3b8' }}
+                    cursor={{ fill: 'rgba(0,217,255,0.05)' }}
+                  />
+                  <Bar dataKey="count" fill="#00D9FF" radius={[4, 4, 0, 0]} maxBarSize={48} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyState icon="📊" message={t('noData')} />
+            )}
+          </CardBody>
+        </Card>
+
+        {/* Devices status mini list */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('devices')}</CardTitle>
+            <button onClick={() => navigate('/devices')} className="text-xs font-mono text-cyan-400 hover:text-cyan-300">→</button>
+          </CardHeader>
+          <CardBody className="p-0">
+            <div className="t-divide max-h-[248px] overflow-y-auto">
+              {summaries.length === 0 && <EmptyState icon="📡" message={t('noDevices')} />}
+              {summaries.map(sum => (
+                <button
+                  key={sum.device.id}
+                  onClick={() => navigate(`/devices/${sum.device.id}`)}
+                  className="w-full flex items-center gap-3 px-5 py-3 t-hover transition-colors text-left"
+                >
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${sum.device.isActive ? 'bg-green-400' : 'bg-slate-600'}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-body font-medium t-text-primary truncate">{sum.device.name}</p>
+                    <p className="text-xs font-mono t-text-muted truncate">{sum.device.ip ?? sum.device.hostname ?? '—'}</p>
+                  </div>
+                  {sum.alerts.unacked > 0 && (
+                    <span className="text-xs font-mono bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded-md flex-shrink-0">
+                      {sum.alerts.unacked}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <MemoizedRiskDistribution />
-        <MemoizedComplianceScore />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <MemoizedRecentAlerts />
-        <MemoizedActivityFeed />
-      </div>
+      {/* Recent alerts */}
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('recentAlerts')}</CardTitle>
+          <button onClick={() => navigate('/alerts')} className="text-xs font-mono text-cyan-400 hover:text-cyan-300">→ {t('all')}</button>
+        </CardHeader>
+        <CardBody className="p-0">
+          {allAlerts.length === 0 ? (
+            <EmptyState icon="🔔" message={t('noAlerts')} />
+          ) : (
+            <div className="t-divide max-h-72 overflow-y-auto">
+              {allAlerts.map(alert => (
+                <div key={alert.id} className="flex items-start gap-4 px-5 py-3">
+                  <SeverityBadge severity={alert.severity} label={t(alert.severity)} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-body t-text-primary truncate">{alert.title}</p>
+                    <p className="text-xs font-mono t-text-muted truncate">{alert.message}</p>
+                  </div>
+                  <div className="flex-shrink-0 text-right">
+                    <p className="text-xs font-mono t-text-muted">
+                      {format(new Date(alert.createdAt), 'dd.MM HH:mm')}
+                    </p>
+                    {alert.acknowledgedAt ? (
+                      <span className="text-xs font-mono text-green-400">✓</span>
+                    ) : (
+                      <span className="text-xs font-mono text-orange-400">!</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardBody>
+      </Card>
     </div>
-  );
+  )
 }

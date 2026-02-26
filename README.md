@@ -1,73 +1,85 @@
-# React + TypeScript + Vite
+# IoT Security Audit — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite + TypeScript фронтенд для платформы аудита безопасности IoT-устройств.
 
-Currently, two official plugins are available:
+## Стек
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **React 18** + **TypeScript**
+- **Vite** — сборщик
+- **Tailwind CSS** — стилизация
+- **React Router v6** — маршрутизация
+- **Zustand** — стейт менеджмент (тема, язык, уведомления)
+- **Recharts** — графики
+- **axios** — HTTP клиент
+- **date-fns** — форматирование дат
 
-## React Compiler
+## Функционал
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Страницы
 
-## Expanding the ESLint configuration
+- **Дашборд** — статистика, графики (pie chart по severity, bar chart по типам устройств), последние алерты
+- **Устройства** — список, добавление/редактирование/удаление, поиск
+- **Детали устройства** — 4 вкладки:
+    - Summary — сводка, статус
+    - Audit — история аудитов, запуск Nmap/Nuclei, просмотр находок
+    - Logs — история логов с фильтром по уровню + **realtime SSE стрим**
+    - Alerts — алерты устройства, подтверждение
+- **Оповещения** — все алерты по всем устройствам с фильтрами
+- **Правила** — CRUD корреляционных правил с валидацией regex
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Мультиязычность
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- 🇺🇸 English
+- 🇷🇺 Русский
+- 🇹🇲 Türkmen
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Темы
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- 🌙 Тёмная (по умолчанию)
+- ☀️ Светлая
+
+Настройки (язык и тема) сохраняются в `localStorage`.
+
+## Быстрый старт
+
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Откройте http://localhost:5173
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Настройка API
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Вите проксирует `/api/*` → `http://localhost:5005/*`.
+Измените в `vite.config.ts` если бекенд на другом адресе.
+
+## API покрытие
+
+| Endpoint                           | Метод             | Статус |
+| ---------------------------------- | ----------------- | ------ |
+| GET /devices                       | devicesApi.list   | ✅     |
+| POST /devices                      | devicesApi.create | ✅     |
+| GET /devices/:id                   | (через summary)   | ✅     |
+| PATCH /devices/:id                 | devicesApi.update | ✅     |
+| DELETE /devices/:id                | devicesApi.remove | ✅     |
+| GET /devices/:id/logs              | logsApi.list      | ✅     |
+| GET /devices/:id/logs/stream (SSE) | createLogStream   | ✅     |
+| POST /ingest/:id/logs              | logsApi.ingest    | ✅     |
+| POST /devices/:id/audits/run       | auditApi.run      | ✅     |
+| GET /devices/:id/audits            | auditApi.list     | ✅     |
+| GET /audits/:id                    | auditApi.get      | ✅     |
+| GET /devices/:id/alerts            | alertsApi.list    | ✅     |
+| PATCH /alerts/:id/ack              | alertsApi.ack     | ✅     |
+| GET /rules                         | rulesApi.list     | ✅     |
+| POST /rules                        | rulesApi.create   | ✅     |
+| PATCH /rules/:id                   | rulesApi.update   | ✅     |
+| DELETE /rules/:id                  | rulesApi.remove   | ✅     |
+| GET /devices/:id/summary           | summaryApi.get    | ✅     |
+
+## Сборка для продакшена
+
+```bash
+npm run build
+# dist/ готов к деплою
 ```

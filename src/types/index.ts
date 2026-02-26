@@ -1,135 +1,164 @@
-export type DeviceStatus = 'online' | 'offline' | 'warning';
-export type RiskLevel = 'critical' | 'high' | 'medium' | 'low';
-export type VulnerabilityStatus = 'open' | 'patched' | 'mitigated';
-export type ScanStatus = 'completed' | 'running' | 'pending' | 'failed';
-export type ActivityType = 'scan' | 'alert' | 'update' | 'info';
-export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
-
-export interface DashboardStats {
-  totalDevices: number;
-  onlineDevices: number;
-  criticalVulnerabilities: number;
-  activeScans: number;
-  riskTrend: Array<{ date: string; score: number }>;
-  devicesByType: Array<{ type: string; count: number }>;
-  recentActivity: Array<{
-    id: string;
-    type: 'scan' | 'vulnerability' | 'device';
-    message: string;
-    timestamp: string;
-    severity?: 'low' | 'medium' | 'high' | 'critical';
-  }>;
-}
+export type DeviceType = 'ROUTER' | 'CAMERA' | 'IOT' | 'SERVER' | 'UNKNOWN'
+export type LogSourceType = 'SYSLOG' | 'MQTT' | 'HTTP'
+export type LogLevel = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL'
+export type AuditStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED'
+export type AlertType = 'SURFACE_CHANGED' | 'LOG_CORRELATION' | 'AUDIT_CRITICAL' | 'DEVICE_OFFLINE'
+export type Severity = 'INFO' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
 
 export interface Device {
-  id: number;
-  name: string;
-  ip: string;
-  type: string;
-  status: DeviceStatus;
-  risk: RiskLevel;
-  vulnerabilities: number;
-  lastScan: string;
-  manufacturer: string;
-  firmware: string;
-  ports: number[];
-  services: string[];
+  id: string
+  name: string
+  ip: string | null
+  hostname: string | null
+  type: DeviceType
+  logSourceType: LogSourceType
+  logSourceMeta: Record<string, unknown> | null
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
 }
 
-export interface DeviceVulnerability {
-  id: string;
-  deviceId: string;
-  device: Device;
-  vulnerabilityId: string;
-  status: VulnerabilityStatus;
-  detectedAt: string;
+export interface LogEntry {
+  id: string
+  deviceId: string
+  ts: string
+  level: LogLevel
+  source: LogSourceType
+  app: string | null
+  host: string | null
+  message: string
+  raw: Record<string, unknown> | null
+  filePath: string | null
+  fileOffset: number | null
+  createdAt: string
 }
 
-export interface Vulnerability {
-  id: string;
-  title: string;
-  severity: Severity;
-  cvss: number;
-  deviceId?: number;
-  device?: string;
-  status?: VulnerabilityStatus;
-  discovered: string;
-  description: string;
-  impact: string;
-  solution: string;
-  deviceVulns?: DeviceVulnerability[];
+export interface AuditFinding {
+  id: string
+  auditRunId: string
+  title: string
+  severity: Severity
+  kind: string
+  port: number | null
+  protocol: string | null
+  service: string | null
+  cve: string | null
+  description: string | null
+  evidence: Record<string, unknown> | null
+  remediation: string | null
+  createdAt: string
 }
 
-export interface ScanPhase {
-  phase: string;
-  progress: number;
-  status: ScanStatus;
-  time: string;
-  details: string;
-  phaseCode?: string;
+export interface AuditRun {
+  id: string
+  deviceId: string
+  status: AuditStatus
+  startedAt: string | null
+  finishedAt: string | null
+  config: Record<string, unknown> | null
+  summary: AuditSummary | null
+  createdAt: string
+  findings?: AuditFinding[]
+  device?: Device
 }
 
-export interface NetworkTraffic {
-  time: string;
-  incoming: number;
-  outgoing: number;
-  suspicious: number;
+export interface AuditSummary {
+  toolErrors: Array<{ tool: string; error: string }>
+  findings: {
+    total: number
+    critical: number
+    high: number
+    medium: number
+    low: number
+    info: number
+  }
+  surfaceChanged: boolean
 }
 
-export interface VulnerabilityTrend {
-  month: string;
-  critical: number;
-  high: number;
-  medium: number;
-  low: number;
+export interface Alert {
+  id: string
+  deviceId: string
+  type: AlertType
+  severity: Severity
+  title: string
+  message: string
+  data: Record<string, unknown> | null
+  auditRunId: string | null
+  logEntryId: string | null
+  createdAt: string
+  acknowledgedAt: string | null
 }
 
-export interface RiskData {
-  name: string;
-  value: number;
-  color: string;
+export interface CorrelationRule {
+  id: string
+  name: string
+  enabled: boolean
+  matchRegex: string
+  windowSec: number
+  threshold: number
+  severity: Severity
+  deviceTypeFilter: DeviceType | null
+  deviceIdFilter: string | null
+  createdAt: string
+  updatedAt: string
 }
 
-export interface ComplianceScore {
-  subject: string;
-  score: number;
-  max: number;
+export interface DeviceSummary {
+  device: {
+    id: string
+    name: string
+    ip: string | null
+    hostname: string | null
+    type: DeviceType
+    isActive: boolean
+  }
+  alerts: {
+    total: number
+    unacked: number
+  }
+  lastAudit: {
+    id: string
+    status: AuditStatus
+    createdAt: string
+    finishedAt: string | null
+    summary: AuditSummary | null
+  } | null
+  lastLog: {
+    id: string
+    ts: string
+    level: LogLevel
+    source: LogSourceType
+  } | null
+  lastSeen: string | null
 }
 
-export interface Activity {
-  id: number;
-  type: ActivityType;
-  message: string;
-  device: string;
-  timestamp: string;
-  severity: Severity;
+export interface CreateDeviceDto {
+  name: string
+  ip?: string
+  hostname?: string
+  type?: DeviceType
+  logSourceType?: LogSourceType
+  logSourceMeta?: Record<string, unknown>
 }
 
-export interface LiveMetrics {
-  devicesOnline: number;
-  totalVulnerabilities: number;
-  criticalIssues: number;
-  scanningNow: number;
+export interface UpdateDeviceDto extends Partial<CreateDeviceDto> {
+  isActive?: boolean
 }
 
-export interface ScanResult {
-  id: string;
-  deviceId: number;
-  deviceName: string;
-  startTime: string;
-  endTime?: string;
-  status: ScanStatus;
-  phases: ScanPhase[];
-  vulnerabilitiesFound: number;
-  findings: string[];
+export interface RunAuditDto {
+  nmap?: boolean
+  nuclei?: boolean
+  nucleiTargetUrl?: string
+  nucleiArgs?: string
 }
 
-export interface Report {
-  id: string;
-  title: string;
-  type: 'technical' | 'executive' | 'compliance';
-  createdAt: string;
-  devices: number;
-  vulnerabilities: number;
-  status: 'draft' | 'final';
+export interface CreateRuleDto {
+  name: string
+  matchRegex: string
+  windowSec?: number
+  threshold?: number
+  severity?: Severity
+  deviceTypeFilter?: DeviceType
+  deviceIdFilter?: string
+  enabled?: boolean
 }

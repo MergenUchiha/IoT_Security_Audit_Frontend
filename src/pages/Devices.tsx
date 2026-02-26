@@ -1,299 +1,237 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Network, Search, Activity, Eye } from 'lucide-react';
-import DeviceCard from '../components/Devices/DeviceCard';
-import DeviceModal from '../components/Devices/DeviceModal';
-import { devicesApi, scansApi } from '../services/api';
-import { useTheme } from '../contexts/ThemeContext';
-import { useNotification } from '../components/NotificationCenter';
-import { useWebSocket } from '../hooks/useWebSocket';
-import type { Device } from '../types';
+import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { devicesApi } from '../api'
+import { useLang, useNotifications } from '../stores'
+import { PageHeader } from '../components/layout'
+import {
+  Card, CardBody, Button, Input, Select, Toggle,
+  Modal, ConfirmModal, EmptyState, Spinner,
+  Table, Thead, Th, Tbody, Tr, Td,
+} from '../components/ui'
+import type { Device, CreateDeviceDto, DeviceType, LogSourceType } from '../types'
 
-const Devices = () => {
-  const { t } = useTheme();
-  const navigate = useNavigate();
-  const { showSuccess, showError, showInfo } = useNotification();
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
-  const [scanning, setScanning] = useState(false);
-  const [scanProgress, setScanProgress] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [auditingDevices, setAuditingDevices] = useState<Set<number>>(new Set());
-  const [scanningMessage, setScanningMessage] = useState('');
-  const { on, off } = useWebSocket();
+const DEVICE_TYPES: DeviceType[] = ['ROUTER', 'CAMERA', 'IOT', 'SERVER', 'UNKNOWN']
+const LOG_SOURCES: LogSourceType[] = ['SYSLOG', 'MQTT', 'HTTP']
 
-  useEffect(() => {
-    fetchDevices();
-  }, []);
+function DeviceForm({
+  initial, onSave, onCancel, loading
+}: {
+  initial?: Partial<Device>
+  onSave: (dto: CreateDeviceDto & { isActive?: boolean }) => void
+  onCancel: () => void
+  loading: boolean
+}) {
+  const { t } = useLang()
+  const [form, setForm] = useState({
+    name: initial?.name ?? '',
+    ip: initial?.ip ?? '',
+    hostname: initial?.hostname ?? '',
+    type: (initial?.type ?? 'UNKNOWN') as DeviceType,
+    logSourceType: (initial?.logSourceType ?? 'SYSLOG') as LogSourceType,
+    isActive: initial?.isActive ?? true,
+  })
 
-  const fetchDevices = async () => {
-    try {
-      const response = await devicesApi.getAll();
-      const transformedDevices = response.data.map((device: any) => ({
-        id: device.id,
-        name: device.name,
-        ip: device.ip,
-        type: device.type,
-        status: device.status,
-        risk: device.risk,
-        vulnerabilities: device.vulnerabilities || device._count?.deviceVulns || 0,
-        lastScan: device.lastScan 
-          ? new Date(device.lastScan).toLocaleString()
-          : 'Never',
-        manufacturer: device.manufacturer,
-        firmware: device.firmware,
-        ports: device.ports || [],
-        services: device.services || [],
-      }));
-      setDevices(transformedDevices);
-    } catch (error) {
-      console.error('Failed to fetch devices:', error);
-      showError('Error', 'Failed to load devices');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Listen for scan updates via WebSocket
-  useEffect(() => {
-    const handleScanCompleted = (data: any) => {
-      console.log('✅ Scan completed:', data);
-      const deviceId = parseInt(data.deviceId);
-      
-      if (auditingDevices.has(deviceId)) {
-        setAuditingDevices(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(deviceId);
-          return newSet;
-        });
-        
-        showSuccess(
-          'Scan Completed',
-          `${data.deviceName || 'Device'} scan finished. ${data.vulnerabilitiesFound || 0} vulnerabilities found.`
-        );
-        
-        // Show view results button
-        setTimeout(() => {
-          const viewResults = confirm(`View scan results for ${data.deviceName}?`);
-          if (viewResults) {
-            navigate(`/scans/${data.scanId}`);
-          }
-        }, 1000);
-        
-        fetchDevices();
-      }
-    };
-
-    const handleScanUpdate = (data: any) => {
-      console.log('🔄 Scan update:', data);
-      const deviceId = parseInt(data.deviceId);
-      
-      if (auditingDevices.has(deviceId) && data.phases?.phases) {
-        const phases = data.phases.phases;
-        const completedPhases = phases.filter((p: any) => p.status === 'completed').length;
-        const totalPhases = phases.length;
-        setScanningMessage(`${completedPhases}/${totalPhases} phases completed`);
-      }
-    };
-
-    on('scanCompleted', handleScanCompleted);
-    on('scanUpdate', handleScanUpdate);
-
-    return () => {
-      off('scanCompleted', handleScanCompleted);
-      off('scanUpdate', handleScanUpdate);
-    };
-  }, [auditingDevices, on, off, navigate, showSuccess]);
-
-  const handleScanNetwork = () => {
-    setScanning(true);
-    setScanProgress(0);
-    
-    const messages = [
-      'Initializing network scan...',
-      'Discovering devices on network...',
-      'Analyzing network topology...',
-      'Identifying active hosts...',
-      'Enumerating services...',
-      'Completing scan...',
-    ];
-    
-    let messageIndex = 0;
-    
-    const messageInterval = setInterval(() => {
-      if (messageIndex < messages.length) {
-        setScanningMessage(messages[messageIndex]);
-        messageIndex++;
-      }
-    }, 800);
-    
-    const interval = setInterval(() => {
-      setScanProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          clearInterval(messageInterval);
-          setTimeout(() => {
-            setScanning(false);
-            setScanningMessage('');
-            showInfo('Scan Complete', 'Network scan completed successfully');
-            fetchDevices();
-          }, 500);
-          return 100;
-        }
-        return prev + 2;
-      });
-    }, 50);
-  };
-
-  const handleStartAudit = async (device: Device) => {
-    try {
-      setAuditingDevices(prev => new Set(prev).add(device.id));
-      
-      showInfo('Starting Audit', `Initiating security scan for ${device.name}...`);
-      
-      console.log('🔍 Starting audit for device:', device.id);
-      const response = await scansApi.create({
-        deviceId: device.id.toString(),
-        scanType: 'full',
-      });
-      
-      console.log('✅ Audit started:', response.data);
-      
-      showSuccess(
-        'Audit Started',
-        `Scanning ${device.name}. This may take a few minutes...`
-      );
-      
-    } catch (error: any) {
-      console.error('❌ Failed to start audit:', error);
-      setAuditingDevices(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(device.id);
-        return newSet;
-      });
-      showError(
-        'Audit Failed',
-        error.response?.data?.message || 'Failed to start audit. Please try again.'
-      );
-    }
-  };
-
-  const handleViewScanResults = async (device: Device) => {
-    try {
-      // Find the most recent scan for this device
-      const response = await scansApi.getAll({ deviceId: device.id.toString() });
-      const scans = response.data;
-      
-      if (scans && scans.length > 0) {
-        const latestScan = scans[0];
-        navigate(`/scans/${latestScan.id}`);
-      } else {
-        showInfo('No Results', 'No scan results available for this device yet.');
-      }
-    } catch (error) {
-      console.error('Failed to fetch scans:', error);
-      showError('Error', 'Failed to load scan results');
-    }
-  };
+  const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }))
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-primary font-mono flex items-center gap-3">
-          <Network className="w-8 h-8 accent-cyan" />
-          {t.devices.title}
-        </h1>
-        <button 
-          onClick={handleScanNetwork}
-          disabled={scanning}
-          className="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-mono font-bold flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95"
-        >
-          <Search className={`w-5 h-5 ${scanning ? 'animate-spin' : ''}`} />
-          {scanning ? t.devices.scanning : t.devices.scanNetwork}
-        </button>
+    <div className="space-y-4">
+      <Input label={t('name')} value={form.name} onChange={e => set('name', e.target.value)} placeholder="My Router" required />
+      <div className="grid grid-cols-2 gap-3">
+        <Input label={t('ip')} value={form.ip} onChange={e => set('ip', e.target.value)} placeholder="192.168.1.1" />
+        <Input label={t('hostname')} value={form.hostname} onChange={e => set('hostname', e.target.value)} placeholder="router.local" />
       </div>
-
-      {/* Active Scans Indicator */}
-      {auditingDevices.size > 0 && (
-        <div className="bg-cyan-900/30 border border-cyan-500 rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <Activity className="w-5 h-5 accent-cyan animate-pulse" />
-            <div className="flex-1">
-              <p className="accent-cyan font-mono font-bold">
-                {auditingDevices.size} Active Audit{auditingDevices.size > 1 ? 's' : ''} in Progress
-              </p>
-              <p className="text-tertiary text-sm font-mono">{scanningMessage}</p>
-            </div>
-          </div>
-        </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Select label={t('deviceType')} value={form.type} onChange={e => set('type', e.target.value)}>
+          {DEVICE_TYPES.map(dt => <option key={dt} value={dt}>{t(dt)}</option>)}
+        </Select>
+        <Select label={t('logSource')} value={form.logSourceType} onChange={e => set('logSourceType', e.target.value)}>
+          {LOG_SOURCES.map(ls => <option key={ls} value={ls}>{ls}</option>)}
+        </Select>
+      </div>
+      {initial?.id && (
+        <Toggle checked={form.isActive} onChange={v => set('isActive', v)} label={form.isActive ? t('active') : t('inactive')} />
       )}
+      <div className="flex justify-end gap-3 pt-2">
+        <Button variant="ghost" onClick={onCancel}>{t('cancel')}</Button>
+        <Button onClick={() => onSave(form)} loading={loading} disabled={!form.name}>
+          {t('save')}
+        </Button>
+      </div>
+    </div>
+  )
+}
 
-      {scanning && (
-        <div className="bg-primary border border-cyan-500 rounded-lg p-6 animate-pulse">
-          <div className="flex items-center justify-between mb-3">
-            <span className="accent-cyan font-mono font-bold">{t.devices.scanningProgress}</span>
-            <span className="text-primary font-mono">{scanProgress}%</span>
-          </div>
-          <div className="w-full bg-tertiary rounded-full h-3 overflow-hidden">
-            <div 
-              className="bg-gradient-to-r from-cyan-500 to-green-500 h-full transition-all duration-100 relative"
-              style={{ width: `${scanProgress}%` }}
-            >
-              <div className="absolute inset-0 bg-white/30 animate-pulse"></div>
-            </div>
-          </div>
-          <p className="text-tertiary text-sm font-mono mt-2">
-            {scanningMessage || t.devices.discoveringDevices}
-          </p>
-        </div>
-      )}
+export default function DevicesPage() {
+  const { t } = useLang()
+  const { push } = useNotifications()
+  const navigate = useNavigate()
 
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="text-center">
-            <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="accent-cyan font-mono">{t.devices.loadingDevices}</p>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {devices.map((device) => (
-              <div key={device.id} className="relative">
-                <DeviceCard 
-                  device={device} 
-                  onClick={setSelectedDevice}
-                  onStartAudit={handleStartAudit}
-                  isAuditing={auditingDevices.has(device.id)}
-                />
-                {device.lastScan !== 'Never' && (
-                  <button
-                    onClick={() => handleViewScanResults(device)}
-                    className="absolute top-2 right-2 p-2 bg-gray-800/90 hover:bg-gray-700 border border-cyan-500 rounded-lg transition-all z-10"
-                    title="View scan results"
-                  >
-                    <Eye className="w-4 h-4 text-cyan-400" />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
+  const [devices, setDevices] = useState<Device[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
 
-          {devices.length === 0 && (
-            <div className="text-center py-20">
-              <Network className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-              <p className="text-gray-400 font-mono">No devices found. Click "Scan Network" to discover devices.</p>
-            </div>
-          )}
-        </>
-      )}
+  const [showAdd, setShowAdd] = useState(false)
+  const [editing, setEditing] = useState<Device | null>(null)
+  const [deleting, setDeleting] = useState<Device | null>(null)
+  const [search, setSearch] = useState('')
 
-      <DeviceModal 
-        device={selectedDevice} 
-        onClose={() => setSelectedDevice(null)} 
+  const load = async () => {
+    setLoading(true)
+    try { setDevices(await devicesApi.list()) } finally { setLoading(false) }
+  }
+
+  useEffect(() => { load() }, [])
+
+  const handleAdd = async (dto: CreateDeviceDto) => {
+    setSaving(true)
+    try {
+      await devicesApi.create(dto)
+      push({ type: 'success', message: t('success') })
+      setShowAdd(false)
+      load()
+    } catch { push({ type: 'error', message: t('error') }) }
+    finally { setSaving(false) }
+  }
+
+  const handleUpdate = async (dto: CreateDeviceDto & { isActive?: boolean }) => {
+    if (!editing) return
+    setSaving(true)
+    try {
+      await devicesApi.update(editing.id, dto)
+      push({ type: 'success', message: t('success') })
+      setEditing(null)
+      load()
+    } catch { push({ type: 'error', message: t('error') }) }
+    finally { setSaving(false) }
+  }
+
+  const handleDelete = async () => {
+    if (!deleting) return
+    setSaving(true)
+    try {
+      await devicesApi.remove(deleting.id)
+      push({ type: 'success', message: t('success') })
+      setDeleting(null)
+      load()
+    } catch { push({ type: 'error', message: t('error') }) }
+    finally { setSaving(false) }
+  }
+
+  const filtered = devices.filter(d =>
+    !search ||
+    d.name.toLowerCase().includes(search.toLowerCase()) ||
+    (d.ip ?? '').includes(search) ||
+    (d.hostname ?? '').toLowerCase().includes(search.toLowerCase())
+  )
+
+  const typeIcons: Record<string, string> = {
+    ROUTER: '⬡', CAMERA: '◎', IOT: '◉', SERVER: '▣', UNKNOWN: '○',
+  }
+
+  return (
+    <div className="animate-fade-in space-y-6">
+      <PageHeader
+        title={t('devices')}
+        sub={`${devices.length} ${t('totalDevices')}`}
+        actions={
+          <>
+            <Input
+              placeholder={t('search')}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-48"
+            />
+            <Button onClick={() => setShowAdd(true)} icon={<span>+</span>}>
+              {t('addDevice')}
+            </Button>
+          </>
+        }
+      />
+
+      <Card>
+        {loading ? (
+          <CardBody className="flex justify-center py-16"><Spinner size="lg" /></CardBody>
+        ) : filtered.length === 0 ? (
+          <EmptyState icon="📡" message={t('noDevices')} />
+        ) : (
+          <Table>
+            <Thead>
+              <tr>
+                <Th>{t('name')}</Th>
+                <Th>{t('ip')} / {t('hostname')}</Th>
+                <Th>{t('deviceType')}</Th>
+                <Th>{t('logSource')}</Th>
+                <Th>{t('status')}</Th>
+                <Th>{t('createdAt')}</Th>
+                <Th>{t('actions')}</Th>
+              </tr>
+            </Thead>
+            <Tbody>
+              {filtered.map(d => (
+                <Tr key={d.id} onClick={() => navigate(`/devices/${d.id}`)}>
+                  <Td>
+                    <div className="flex items-center gap-2">
+                      <span className="text-cyan-400 font-mono">{typeIcons[d.type]}</span>
+                      <span className="font-medium t-text-primary">{d.name}</span>
+                    </div>
+                  </Td>
+                  <Td>
+                    <div className="font-mono text-xs">
+                      {d.ip && <div className="text-cyan-300">{d.ip}</div>}
+                      {d.hostname && <div className="t-text-muted">{d.hostname}</div>}
+                    </div>
+                  </Td>
+                  <Td>
+                    <span className="text-xs font-mono t-text-muted">{t(d.type as any)}</span>
+                  </Td>
+                  <Td>
+                    <span className={`text-xs font-mono px-2 py-0.5 rounded-md ${
+                      d.logSourceType === 'MQTT' ? 'bg-purple-500/20 text-purple-300' :
+                      d.logSourceType === 'HTTP' ? 'bg-blue-500/20 text-blue-300' :
+                      'border t-border bg-transparent t-text-muted'
+                    }`}>{d.logSourceType}</span>
+                  </Td>
+                  <Td>
+                    <span className={`flex items-center gap-1.5 text-xs font-mono ${d.isActive ? 'text-green-400' : 't-text-muted'}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${d.isActive ? 'bg-green-400 animate-pulse' : 'bg-slate-600'}`} />
+                      {d.isActive ? t('active') : t('inactive')}
+                    </span>
+                  </Td>
+                  <Td>
+                    <span className="text-xs font-mono t-text-muted">
+                      {new Date(d.createdAt).toLocaleDateString()}
+                    </span>
+                  </Td>
+                  <Td>
+                    <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                      <Button size="sm" variant="ghost" onClick={() => setEditing(d)}>✎</Button>
+                      <Button size="sm" variant="danger" onClick={() => setDeleting(d)}>✕</Button>
+                    </div>
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        )}
+      </Card>
+
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={t('addDevice')}>
+        <DeviceForm onSave={handleAdd} onCancel={() => setShowAdd(false)} loading={saving} />
+      </Modal>
+
+      <Modal open={!!editing} onClose={() => setEditing(null)} title={t('editDevice')}>
+        {editing && (
+          <DeviceForm initial={editing} onSave={handleUpdate} onCancel={() => setEditing(null)} loading={saving} />
+        )}
+      </Modal>
+
+      <ConfirmModal
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        onConfirm={handleDelete}
+        message={`${t('confirmDelete')}: "${deleting?.name}"?`}
+        loading={saving}
       />
     </div>
-  );
-};
-
-export default Devices;
+  )
+}
