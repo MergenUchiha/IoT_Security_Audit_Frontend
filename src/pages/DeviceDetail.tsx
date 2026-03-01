@@ -317,13 +317,16 @@ function AuditTab({ deviceId }: { deviceId: string }) {
                                                     </span>
                                                 )}
                                                 {a.summary?.toolErrors &&
-                                                    a.summary.toolErrors
-                                                        .length > 0 && (
+                                                    (
+                                                        a.summary
+                                                            .toolErrors as any[]
+                                                    )?.length > 0 && (
                                                         <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-red-500/10 text-red-400">
                                                             {
-                                                                a.summary
-                                                                    .toolErrors
-                                                                    .length
+                                                                (
+                                                                    a.summary
+                                                                        .toolErrors as any[]
+                                                                )?.length
                                                             }{" "}
                                                             err
                                                         </span>
